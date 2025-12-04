@@ -41,8 +41,8 @@
   monmaptool: monmap file /tmp/test.monmap.1234
   MONMAP FEATURES:
       persistent: [kraken(1),octopus(32)]
-      optional:   [unknown(8192)]
-      required:   [kraken(1),octopus(32),unknown(8192)]
+      optional:   [umbrella(4096)]
+      required:   [kraken(1),octopus(32),umbrella(4096)]
   
   AVAILABLE FEATURES:
       supported:  [kraken(1),luminous(2),mimic(4),osdmap-prune(8),nautilus(16),octopus(32),pacific(64),elector-pinging(128),quincy(256),reef(512),squid(1024),tentacle(2048),umbrella(4096),nvmeof_beacon_diff(4294967296)]
@@ -52,8 +52,8 @@
   monmaptool: monmap file /tmp/test.monmap.1234
   MONMAP FEATURES:
       persistent: [kraken(1),octopus(32)]
-      optional:   [unknown(8192)]
-      required:   [kraken(1),octopus(32),unknown(8192)]
+      optional:   [umbrella(4096)]
+      required:   [kraken(1),octopus(32),umbrella(4096)]
   
   AVAILABLE FEATURES:
       supported:  [kraken(1),luminous(2),mimic(4),osdmap-prune(8),nautilus(16),octopus(32),pacific(64),elector-pinging(128),quincy(256),reef(512),squid(1024),tentacle(2048),umbrella(4096),nvmeof_beacon_diff(4294967296)]

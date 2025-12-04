@@ -564,7 +564,7 @@ namespace ceph {
 	  FEATURE_REEF |
 	  FEATURE_SQUID |
 	  FEATURE_TENTACLE |
-	  FEATURE_UMBRELLA |
+          FEATURE_UMBRELLA |
 
 	  // Release-independent features
 	  FEATURE_NVMEOF_BEACON_DIFF |
@@ -596,7 +596,7 @@ namespace ceph {
 	  FEATURE_REEF |
 	  FEATURE_SQUID |
 	  FEATURE_TENTACLE |
-	  FEATURE_UMBRELLA |
+          FEATURE_UMBRELLA |
 
 	  // Release-independent features
 	  FEATURE_NVMEOF_BEACON_DIFF |

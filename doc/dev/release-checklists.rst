@@ -18,7 +18,7 @@ Versions and tags
 - [x] Update CMakeLists.txt VERSION (right at the top to X.0.0)
 - [x] Update src/librbd/CMakeLists.txt VERSION (librbd target at the bottom to 1.X.0)
 - [x] Update src/ceph_release with the new release name, number, and type ('dev')
-- [x] Initial tag vX.0.0 so that we can distinguish from (and sort after) the backported (X-1).2.Z versions.
+- [ ] Initial tag vX.0.0 so that we can distinguish from (and sort after) the backported (X-1).2.Z versions.
 
 .. note::
 
@@ -48,7 +48,7 @@ Scripts
 ~~~~~~~
 
 - [x] src/script/backport-create-issue (`releases()`)
-- [x] src/script/ceph-release-notes (up to X)
+- [ ] src/script/ceph-release-notes (up to X)
 
 Misc
 ~~~~
@@ -79,7 +79,7 @@ Mon
 
 - [x] src/tools/monmaptool.cc: bump min_mon_release to X for created (new) clusters
 - [x] src/test/cli/monmaptool/8.t: update output for monmaptool to X
-- [x] qa/standalone/mon/misc adjust `TEST_mon_features` (add X cases and adjust `--mon-debug-no-require-X`)
+- [ ] qa/standalone/mon/misc adjust `TEST_mon_features` (add X cases and adjust `--mon-debug-no-require-X`)
 - [x] qa/standalone/mon/misc bump up `jqfilter='.monmap.features.persistent | length == N'` to `N+1`
 - [x] mon/MgrMonitor.cc adjust `always_on_modules`
 - [x] common/options/global.yaml.in define `mon_debug_no_require_X`
@@ -109,12 +109,12 @@ Code cleanup
 QA suite
 --------
 
-- [x] create qa/workunits/test_telemetry_(X-1).sh
-- [x] create qa/workunits/test_telemetry_(X-1)_x.sh
-- [x] create qa/suites/upgrade/(X-1)-x
-- [x] remove qa/suites/upgrade/(X-3)-x-*
-- [x] update qa/fs/upgrade/ to remove (X-3) and add (X-1); check with fs team to confirm / help
-- [x] update qa/ upgrade suites require-osd-release calls to tentacle
+- [ ] create qa/workunits/test_telemetry_(X-1).sh
+- [ ] create qa/workunits/test_telemetry_(X-1)_x.sh
+- [ ] create qa/suites/upgrade/(X-1)-x
+- [ ] remove qa/suites/upgrade/(X-3)-x-*
+- [ ] update qa/fs/upgrade/ to remove (X-3) and add (X-1); check with fs team to confirm / help
+- [ ] update qa/ upgrade suites require-osd-release calls to tentacle
 - [x] create qa/releases/X.yaml
 - [x] create qa/suites/rados/thrash-old-clients/1-install/(X-1).yaml
 - [x] update qa/suites/rados/encoder/1-task.yaml to remove (X-3) and add X
