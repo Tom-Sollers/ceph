@@ -2726,7 +2726,6 @@ void PGMap::get_health_checks(
     }else if (osdmap.get_pg_pool(pg_id.pool())->is_migration_target()) {
       total_migrated_objects += pg.stats.sum.num_objects;
       total_migrating_objects += pg.stats.sum.num_objects;
-      dout(20) << "found a migration target" << dendl;
     }
   }
   //for each of the pools if its in a migration then increment the pools and pgs defined above counter above.
@@ -2756,13 +2755,6 @@ void PGMap::get_health_checks(
         ss.str(),
         total_migrating_pools);
   }
-  dout(20) << "number of migrated objects: " << total_migrated_objects << dendl;
-  dout(20) << "number of object in the migration " << total_migrating_objects << dendl;
-  dout(20) << "number of migrating pools: " << total_migrating_pools << dendl;
-  dout(20) << "number of migrating pgs: " << total_migrating_pgs << dendl;
-
-
-
 
   // OSD_SCRUB_ERRORS
   if (pg_sum.stats.sum.num_scrub_errors) {
