@@ -35,6 +35,18 @@
 #include "test/osd/MockECRecPred.h"
 #include "test/osd/MockECReadPred.h"
 #include "test/osd/MockPeeringListener.h"
+#include "osd/PeeringState.h"
+#include "osd/PGBackend.h"
+#include "osd/ECBackend.h"
+#include "osd/OSDMap.h"
+#include "osd/osd_types.h"
+#include "osd/osd_perf_counters.h"
+#include "common/ceph_context.h"
+#include "common/ostream_temp.h"
+#include "common/perf_counters_collection.h"
+#include "common/WorkQueue.h"
+#include "common/intrusive_timer.h"
+#include "global/global_context.h"
 #include "global/global_init.h"
 #include "messages/MOSDPeeringOp.h"
 #include "msg/Connection.h"
@@ -54,6 +66,1106 @@ IsPGRecoverablePredicate *get_is_recoverable_predicate() {
 IsPGReadablePredicate *get_is_readable_predicate() {
   return new MockECReadPred();
 }
+
+// MockPGBackendListener - simple stub for PGBackend::Listener
+class MockPGBackendListener : public PGBackend::Listener {
+public:
+  pg_info_t info;
+  OSDMapRef osdmap;
+  const pg_pool_t pool;
+  PGLog log;
+  DoutPrefixProvider *dpp;
+  pg_shard_t pg_whoami;
+  std::set<pg_shard_t> shardset;
+  std::map<pg_shard_t, pg_info_t> shard_info;
+  std::map<pg_shard_t, pg_missing_t> shard_missing;
+  std::map<hobject_t, std::set<pg_shard_t>> missing_loc_shards;
+  pg_missing_tracker_t local_missing;
+
+  MockPGBackendListener(OSDMapRef osdmap, const pg_pool_t pi, DoutPrefixProvider *dpp, pg_shard_t pg_whoami) :
+    osdmap(osdmap), pool(pi), log(g_ceph_context), dpp(dpp), pg_whoami(pg_whoami) {}
+
+  // Debugging
+  DoutPrefixProvider *get_dpp() override {
+    return dpp;
+  }
+
+  // Recovery callbacks
+  void on_local_recover(
+    const hobject_t &oid,
+    const ObjectRecoveryInfo &recovery_info,
+    ObjectContextRef obc,
+    bool is_delete,
+    ObjectStore::Transaction *t) override {
+  }
+
+  void on_global_recover(
+    const hobject_t &oid,
+    const object_stat_sum_t &stat_diff,
+    bool is_delete) override {
+  }
+
+  void on_peer_recover(
+    pg_shard_t peer,
+    const hobject_t &oid,
+    const ObjectRecoveryInfo &recovery_info) override {
+  }
+
+  void begin_peer_recover(
+    pg_shard_t peer,
+    const hobject_t oid) override {
+  }
+
+  void apply_stats(
+    const hobject_t &soid,
+    const object_stat_sum_t &delta_stats) override {
+  }
+
+  void on_failed_pull(
+    const std::set<pg_shard_t> &from,
+    const hobject_t &soid,
+    const eversion_t &v) override {
+  }
+
+  void cancel_pull(const hobject_t &soid) override {
+  }
+
+  void remove_missing_object(
+    const hobject_t &oid,
+    eversion_t v,
+    Context *on_complete) override {
+  }
+
+  // Locking
+  void pg_lock() override {}
+  void pg_unlock() override {}
+  void pg_add_ref() override {}
+  void pg_dec_ref() override {}
+
+  // Context wrapping
+  Context *bless_context(Context *c) override {
+    return c;
+  }
+
+  GenContext<ThreadPool::TPHandle&> *bless_gencontext(
+    GenContext<ThreadPool::TPHandle&> *c) override {
+    return c;
+  }
+
+  GenContext<ThreadPool::TPHandle&> *bless_unlocked_gencontext(
+    GenContext<ThreadPool::TPHandle&> *c) override {
+    return c;
+  }
+
+  // Messaging
+  void send_message(int to_osd, Message *m) override {
+  }
+
+  void queue_transaction(
+    ObjectStore::Transaction&& t,
+    OpRequestRef op = OpRequestRef()) override {
+  }
+
+  void queue_transactions(
+    std::vector<ObjectStore::Transaction>& tls,
+    OpRequestRef op = OpRequestRef()) override {
+  }
+
+  epoch_t get_interval_start_epoch() const override {
+    return 1;
+  }
+
+  epoch_t get_last_peering_reset_epoch() const override {
+    return 1;
+  }
+
+  // Shard information
+  const std::set<pg_shard_t> &get_acting_recovery_backfill_shards() const override {
+    return shardset;
+  }
+
+  const std::set<pg_shard_t> &get_acting_shards() const override {
+    return shardset;
+  }
+
+  const std::set<pg_shard_t> &get_backfill_shards() const override {
+    return shardset;
+  }
+
+  std::ostream& gen_dbg_prefix(std::ostream& out) const override {
+    return out << "MockPGBackend ";
+  }
+
+  const std::map<hobject_t, std::set<pg_shard_t>> &get_missing_loc_shards() const override {
+    return missing_loc_shards;
+  }
+
+  const pg_missing_tracker_t &get_local_missing() const override {
+    return local_missing;
+  }
+
+  void add_local_next_event(const pg_log_entry_t& e) override {
+  }
+
+  const std::map<pg_shard_t, pg_missing_t> &get_shard_missing() const override {
+    return shard_missing;
+  }
+
+  const pg_missing_const_i &get_shard_missing(pg_shard_t peer) const override {
+    return local_missing;
+  }
+
+  const std::map<pg_shard_t, pg_info_t> &get_shard_info() const override {
+    return shard_info;
+  }
+
+  const PGLog &get_log() const override {
+    return log;
+  }
+
+  bool pgb_is_primary() const override {
+    return true;
+  }
+
+  const OSDMapRef& pgb_get_osdmap() const override {
+    return osdmap;
+  }
+
+  epoch_t pgb_get_osdmap_epoch() const override {
+    return osdmap->get_epoch();
+  }
+
+  const pg_info_t &get_info() const override {
+    return info;
+  }
+
+  const pg_pool_t &get_pool() const override {
+    return pool;
+  }
+
+  eversion_t get_pg_committed_to() const override {
+    return eversion_t();
+  }
+
+  ObjectContextRef get_obc(
+    const hobject_t &hoid,
+    const std::map<std::string, ceph::buffer::list, std::less<>> &attrs) override {
+    return ObjectContextRef();
+  }
+
+  bool try_lock_for_read(
+    const hobject_t &hoid,
+    ObcLockManager &manager) override {
+    return true;
+  }
+
+  void release_locks(ObcLockManager &manager) override {
+  }
+
+  void op_applied(const eversion_t &applied_version) override {
+  }
+
+  bool should_send_op(pg_shard_t peer, const hobject_t &hoid) override {
+    return true;
+  }
+
+  bool pg_is_undersized() const override {
+    return false;
+  }
+
+  bool pg_is_repair() const override {
+    return false;
+  }
+
+#if POOL_MIGRATION
+  void update_migration_watermark(const hobject_t &watermark) override {
+  }
+#endif
+
+#if POOL_MIGRATION
+  std::optional<hobject_t> consider_updating_migration_watermark(
+    std::set<hobject_t> &deleted) override {
+    return std::nullopt;
+  }
+#endif
+
+  void log_operation(
+    std::vector<pg_log_entry_t>&& logv,
+    const std::optional<pg_hit_set_history_t> &hset_history,
+    const eversion_t &trim_to,
+    const eversion_t &roll_forward_to,
+    const eversion_t &pg_committed_to,
+    bool transaction_applied,
+    ObjectStore::Transaction &t,
+    bool async = false) override {
+  }
+
+  void pgb_set_object_snap_mapping(
+    const hobject_t &soid,
+    const std::set<snapid_t> &snaps,
+    ObjectStore::Transaction *t) override {
+  }
+
+  void pgb_clear_object_snap_mapping(
+    const hobject_t &soid,
+    ObjectStore::Transaction *t) override {
+  }
+
+  void update_peer_last_complete_ondisk(
+    pg_shard_t fromosd,
+    eversion_t lcod) override {
+  }
+
+  void update_last_complete_ondisk(eversion_t lcod) override {
+  }
+
+  void update_pct(eversion_t pct) override {
+  }
+
+  void update_stats(const pg_stat_t &stat) override {
+  }
+
+  void schedule_recovery_work(
+    GenContext<ThreadPool::TPHandle&> *c,
+    uint64_t cost) override {
+  }
+
+  common::intrusive_timer &get_pg_timer() override {
+    ceph_abort("Not supported");
+  }
+
+  pg_shard_t whoami_shard() const override {
+    return pg_whoami;
+  }
+
+  spg_t primary_spg_t() const override {
+    return spg_t();
+  }
+
+  pg_shard_t primary_shard() const override {
+    return pg_shard_t();
+  }
+
+  uint64_t min_peer_features() const override {
+    return CEPH_FEATURES_ALL;
+  }
+
+  uint64_t min_upacting_features() const override {
+    return CEPH_FEATURES_ALL;
+  }
+
+  pg_feature_vec_t get_pg_acting_features() const override {
+    return pg_feature_vec_t();
+  }
+
+  hobject_t get_temp_recovery_object(
+    const hobject_t& target,
+    eversion_t version) override {
+    return hobject_t();
+  }
+
+  void send_message_osd_cluster(
+    int peer, Message *m, epoch_t from_epoch) override {
+  }
+
+  void send_message_osd_cluster(
+    std::vector<std::pair<int, Message*>>& messages, epoch_t from_epoch) override {
+  }
+
+  void send_message_osd_cluster(MessageRef, Connection *con) override {
+  }
+
+  void send_message_osd_cluster(Message *m, const ConnectionRef& con) override {
+  }
+
+  void start_mon_command(
+    std::vector<std::string>&& cmd, bufferlist&& inbl,
+    bufferlist *outbl, std::string *outs,
+    Context *onfinish) override {
+  }
+
+  ConnectionRef get_con_osd_cluster(int peer, epoch_t from_epoch) override {
+    return nullptr;
+  }
+
+  entity_name_t get_cluster_msgr_name() override {
+    return entity_name_t();
+  }
+
+  PerfCounters *get_logger() override {
+    return nullptr;
+  }
+
+  ceph_tid_t get_tid() override {
+    return 0;
+  }
+
+  OstreamTemp clog_error() override {
+    return OstreamTemp(CLOG_ERROR, nullptr);
+  }
+
+  OstreamTemp clog_warn() override {
+    return OstreamTemp(CLOG_WARN, nullptr);
+  }
+
+  bool check_failsafe_full() override {
+    return false;
+  }
+
+  void inc_osd_stat_repaired() override {
+  }
+
+  bool pg_is_remote_backfilling() override {
+    return false;
+  }
+
+  void pg_add_local_num_bytes(int64_t num_bytes) override {
+  }
+
+  void pg_sub_local_num_bytes(int64_t num_bytes) override {
+  }
+
+  void pg_add_num_bytes(int64_t num_bytes) override {
+  }
+
+  void pg_sub_num_bytes(int64_t num_bytes) override {
+  }
+
+  bool maybe_preempt_replica_scrub(const hobject_t& oid) override {
+    return false;
+  }
+
+  struct ECListener *get_eclistener() override {
+    return nullptr;
+  }
+};
+
+// MockPGBackend - simple stub for PGBackend
+class MockPGBackend : public PGBackend {
+public:
+  MockPGBackend(CephContext* cct, Listener *l, ObjectStore *store,
+                const coll_t &coll, ObjectStore::CollectionHandle &ch)
+    : PGBackend(cct, l, store, coll, ch) {}
+
+  // Recovery operations
+  RecoveryHandle *open_recovery_op() override {
+    return nullptr;
+  }
+
+  void run_recovery_op(RecoveryHandle *h, int priority) override {
+  }
+
+  int recover_object(
+    const hobject_t &hoid,
+    eversion_t v,
+    ObjectContextRef head,
+    ObjectContextRef obc,
+    RecoveryHandle *h) override {
+    return 0;
+  }
+
+  // Message handling
+  bool can_handle_while_inactive(OpRequestRef op) override {
+    return false;
+  }
+
+  bool _handle_message(OpRequestRef op) override {
+    return false;
+  }
+
+  void check_recovery_sources(const OSDMapRef& osdmap) override {
+  }
+
+  // State management
+  void on_change() override {
+  }
+
+  void clear_recovery_state() override {
+  }
+
+  // Predicates
+  IsPGRecoverablePredicate *get_is_recoverable_predicate() const override {
+    return nullptr;
+  }
+
+  IsPGReadablePredicate *get_is_readable_predicate() const override {
+    return nullptr;
+  }
+
+  bool get_ec_supports_crc_encode_decode() const override {
+    return false;
+  }
+
+  void dump_recovery_info(ceph::Formatter *f) const override {
+  }
+
+  bool ec_can_decode(const shard_id_set &available_shards) const override {
+    return false;
+  }
+
+  shard_id_map<bufferlist> ec_encode_acting_set(
+    const bufferlist &in_bl) const override {
+    return {0};
+  }
+
+  shard_id_map<bufferlist> ec_decode_acting_set(
+    const shard_id_map<bufferlist> &shard_map, int chunk_size) const override {
+    return {0};
+  }
+
+  ECUtil::stripe_info_t ec_get_sinfo() const override {
+    return {0, 0, 0};
+  }
+
+  // Transaction submission
+  void submit_transaction(
+    const hobject_t &hoid,
+    const object_stat_sum_t &delta_stats,
+    const eversion_t &at_version,
+    PGTransactionUPtr &&t,
+    const eversion_t &trim_to,
+    const eversion_t &pg_committed_to,
+    std::vector<pg_log_entry_t>&& log_entries,
+    std::optional<pg_hit_set_history_t> &hset_history,
+    Context *on_all_commit,
+    ceph_tid_t tid,
+    osd_reqid_t reqid,
+    OpRequestRef op) override {
+  }
+
+  void call_write_ordered(std::function<void(void)> &&cb) override {
+    cb();
+  }
+
+  // Object operations
+  int objects_read_sync(
+    const hobject_t &hoid,
+    uint64_t off,
+    uint64_t len,
+    uint32_t op_flags,
+    ceph::buffer::list *bl) override {
+    return 0;
+  }
+
+  void objects_read_async(
+    const hobject_t &hoid,
+    uint64_t object_size,
+    const std::list<std::pair<ec_align_t,
+      std::pair<ceph::buffer::list*, Context*>>> &to_read,
+    Context *on_complete, bool fast_read = false) override {
+  }
+
+  bool auto_repair_supported() const override {
+    return false;
+  }
+
+  uint64_t be_get_ondisk_size(uint64_t logical_size,
+                              shard_id_t shard_id,
+                              bool object_is_legacy_ec) const override {
+    return logical_size;
+  }
+
+  int be_deep_scrub(
+    const Scrub::ScrubCounterSet& io_counters,
+    const hobject_t &oid,
+    ScrubMap &map,
+    ScrubMapBuilder &pos,
+    ScrubMap::object &o) override {
+    return 0;
+  }
+};
+
+// MockPGLogEntryHandler
+//
+// This is a fully functional implementation of the PGLog::LogEntryHandler
+// interface. It calls code in PGBackend to perform the requested operations
+// although some of the stubs in MockPGBackend return questionable information
+// about the object size so the generated ObjectStore::Transaction is probably
+// not correct. The main purpose is to use partial_write to update the PWLC
+// information when appending entries to the log
+class MockPGLogEntryHandler : public PGLog::LogEntryHandler {
+ public:
+  MockPGBackend *backend;
+  ObjectStore::Transaction *t;
+  MockPGLogEntryHandler(MockPGBackend *backend, ObjectStore::Transaction *t) : backend(backend), t(t) {}
+
+  // LogEntryHandler
+  void remove(const hobject_t &hoid) override {
+    dout(0) << "MockPGLogEntryHandler::remove " << hoid << dendl;
+    backend->remove(hoid, t);
+  }
+  void try_stash(const hobject_t &hoid, version_t v) override {
+    dout(0) << "MockPGLogEntryHandler::try_stash " << hoid << " " << v << dendl;
+    backend->try_stash(hoid, v, t);
+  }
+  void rollback(const pg_log_entry_t &entry) override {
+    dout(0) << "MockPGLogEntryHandler::rollback " << entry << dendl;
+    ceph_assert(entry.can_rollback());
+    backend->rollback(entry, t);
+  }
+  void rollforward(const pg_log_entry_t &entry) override {
+    dout(0) << "MockPGLogEntryHandler::rollforward " << entry << dendl;
+    backend->rollforward(entry, t);
+  }
+  void trim(const pg_log_entry_t &entry) override {
+    dout(0) << "MockPGLogEntryHandler::trim " << entry << dendl;
+    backend->trim(entry, t);
+  }
+  void partial_write(pg_info_t *info, eversion_t previous_version,
+                      const pg_log_entry_t &entry
+    ) override {
+    dout(0) << "MockPGLogEntryHandler::partial_write " << entry << dendl;
+    backend->partial_write(info, previous_version, entry);
+  }
+};
+
+// Mock PeeringListener - stub of PeeringState::PeeringListener
+// to help with testing of PeeringState. Keep track of calls
+// from PeeringState and emulate some of PrimaryLogPG/PG
+// functionality for testing purposes.
+//
+// There are some inject_* variables that can be used to help
+// tests create race hazards or test failure paths
+class MockPeeringListener : public PeeringState::PeeringListener {
+ public:
+  pg_shard_t pg_whoami;
+  MockLog logger;
+  PeeringState *ps;
+  unique_ptr<MockPGBackendListener> backend_listener;
+  coll_t coll;
+  ObjectStore::CollectionHandle ch;
+  unique_ptr<MockPGBackend> backend;
+  PerfCounters* recoverystate_perf;
+  PerfCounters* logger_perf;
+  std::vector<int> next_acting;
+
+#ifdef WITH_CRIMSON
+  // Per OSD state
+  std::map<int,std::list<MessageURef>> messages;
+#else
+  // Per OSD state
+  std::map<int,std::list<MessageRef>> messages;
+#endif
+  std::vector<HeartbeatStampsRef> hb_stamps;
+  std::list<PGPeeringEventRef> events;
+  std::list<PGPeeringEventRef> stalled_events;
+
+  // By default MockPeeringListener will add events to the event queue immediately
+  // simulating the responses that PrimaryLogPG normally generates. These inject
+  // booleans can change the behavior to test other code paths
+
+  // If inject_event_stall is true then events are added to the stalled_events list
+  // and the test case must manually dispatch the event
+  bool inject_event_stall = false;
+
+  // If inject_keep_preempt is true then the preempt event for a local/remote
+  // reservation is added to the stalled_events list so the test case can later
+  // dispatch this event to test a preempted reservation
+  bool inject_keep_preempt = false;
+
+  // If inject_fail_reserve_recovery_space is true then reject backfill/pool
+  // migration requests with too full
+  bool inject_fail_reserve_recovery_space = false;
+
+  MockPeeringListener(OSDMapRef osdmap,
+                      const pg_pool_t pi,
+                      DoutPrefixProvider *dpp,
+                      pg_shard_t pg_whoami) : pg_whoami(pg_whoami) {
+    backend_listener = make_unique<MockPGBackendListener>(osdmap, pi, dpp, pg_whoami);
+    backend = make_unique<MockPGBackend>(g_ceph_context, backend_listener.get(), nullptr, coll, ch);
+    recoverystate_perf = build_recoverystate_perf(g_ceph_context);
+    g_ceph_context->get_perfcounters_collection()->add(recoverystate_perf);
+    logger_perf = build_osd_logger(g_ceph_context);
+    g_ceph_context->get_perfcounters_collection()->add(logger_perf);
+  }
+
+  // EpochSource interface
+  epoch_t get_osdmap_epoch() const override {
+    return current_epoch;
+  }
+
+  // PeeringListener interface
+  void prepare_write(
+    pg_info_t &info,
+    pg_info_t &last_written_info,
+    PastIntervals &past_intervals,
+    PGLog &pglog,
+    bool dirty_info,
+    bool dirty_big_info,
+    bool need_write_epoch,
+    ObjectStore::Transaction &t) override {
+    prepare_write_called = true;
+  }
+
+  void scrub_requested(scrub_level_t scrub_level, scrub_type_t scrub_type) override {
+    scrub_requested_called = true;
+  }
+
+  uint64_t get_snap_trimq_size() const override {
+    return snap_trimq_size;
+  }
+
+#ifdef WITH_CRIMSON
+  void send_cluster_message(
+    int osd, MessageURef m, epoch_t epoch, bool share_map_update=false) override {
+    dout(0) << "send_cluster_message to " << osd << " " << m << dendl;
+    messages[osd].push_back(m);
+    messages_sent++;
+  }
+#else
+  void send_cluster_message(
+    int osd, MessageRef m, epoch_t epoch, bool share_map_update=false) override {
+    dout(0) << "send_cluster_message to " << osd << " " << m << dendl;
+    messages[osd].push_back(m);
+    messages_sent++;
+  }
+#endif
+
+  void send_pg_created(pg_t pgid) override {
+    pg_created_sent = true;
+  }
+  ceph::signedspan get_mnow() const override {
+    return ceph::signedspan::zero();
+  }
+
+  HeartbeatStampsRef get_hb_stamps(int peer) override {
+    if (peer >= (int)hb_stamps.size()) {
+      hb_stamps.resize(peer + 1);
+    }
+    if (!hb_stamps[peer]) {
+      hb_stamps[peer] = ceph::make_ref<HeartbeatStamps>(peer);
+    }
+    return hb_stamps[peer];
+  }
+
+  void schedule_renew_lease(epoch_t plr, ceph::timespan delay) override {
+    renew_lease_scheduled = true;
+  }
+
+  void queue_check_readable(epoch_t lpr, ceph::timespan delay) override {
+    check_readable_queued = true;
+  }
+
+  void recheck_readable() override {
+    readable_rechecked = true;
+  }
+
+  unsigned get_target_pg_log_entries() const override {
+    return target_pg_log_entries;
+  }
+
+
+  bool try_flush_or_schedule_async() override {
+    return true;
+  }
+
+  void start_flush_on_transaction(ObjectStore::Transaction &t) override {
+    flush_started = true;
+  }
+
+  void on_flushed() override {
+    flushed = true;
+  }
+
+  void schedule_event_after(
+    PGPeeringEventRef event,
+    float delay) override {
+    stalled_events.push_back(std::move(event));
+    events_scheduled++;
+  }
+
+  void request_local_background_io_reservation(
+    unsigned priority,
+    PGPeeringEventURef on_grant,
+    PGPeeringEventURef on_preempt) override {
+    if (inject_event_stall) {
+      stalled_events.push_back(std::move(on_grant));
+    } else {
+      events.push_back(std::move(on_grant));
+    }
+    if (inject_keep_preempt) {
+      stalled_events.push_back(std::move(on_preempt));
+    }
+    io_reservations_requested++;
+  }
+
+  void update_local_background_io_priority(
+    unsigned priority) override {
+    io_priority_updated = true;
+  }
+
+  void cancel_local_background_io_reservation() override {
+    io_reservation_cancelled = true;
+  }
+
+  void request_remote_recovery_reservation(
+    unsigned priority,
+    PGPeeringEventURef on_grant,
+    PGPeeringEventURef on_preempt) override {
+    if (inject_event_stall) {
+      stalled_events.push_back(std::move(on_grant));
+    } else {
+      events.push_back(std::move(on_grant));
+    }
+    if (inject_keep_preempt) {
+      stalled_events.push_back(std::move(on_preempt));
+    }
+    remote_recovery_reservations_requested++;
+  }
+
+  void cancel_remote_recovery_reservation() override {
+    remote_recovery_reservation_cancelled = true;
+  }
+
+  void schedule_event_on_commit(
+    ObjectStore::Transaction &t,
+    PGPeeringEventRef on_commit) override {
+    if (inject_event_stall) {
+      stalled_events.push_back(std::move(on_commit));
+    } else {
+      events.push_back(std::move(on_commit));
+    }
+    events_on_commit_scheduled++;
+  }
+
+  void update_heartbeat_peers(std::set<int> peers) override {
+    heartbeat_peers_updated = true;
+  }
+
+  void set_probe_targets(const std::set<pg_shard_t> &probe_set) override {
+    probe_targets_set = true;
+  }
+
+  void clear_probe_targets() override {
+    probe_targets_cleared = true;
+  }
+
+  void queue_want_pg_temp(const std::vector<int> &wanted) override {
+    pg_temp_wanted = true;
+    next_acting = wanted;
+  }
+
+  void clear_want_pg_temp() override {
+    pg_temp_cleared = true;
+  }
+
+#if POOL_MIGRATION
+  void send_pg_migrated_pool() override {
+    pg_migrated_pool_sent = true;
+  }
+#endif
+
+  void publish_stats_to_osd() override {
+    stats_published = true;
+  }
+
+  void clear_publish_stats() override {
+    stats_cleared = true;
+  }
+
+  void check_recovery_sources(const OSDMapRef& newmap) override {
+    recovery_sources_checked = true;
+  }
+
+  void check_blocklisted_watchers() override {
+    blocklisted_watchers_checked = true;
+  }
+
+  void clear_primary_state() override {
+    primary_state_cleared = true;
+  }
+
+  void on_active_exit() override {
+    active_exited = true;
+  }
+
+  void on_active_actmap() override {
+    active_actmap_called = true;
+  }
+
+  void on_active_advmap(const OSDMapRef &osdmap) override {
+    active_advmap_called = true;
+  }
+
+  void on_backfill_reserved() override {
+    backfill_reserved = true;
+  }
+
+  void on_recovery_reserved() override {
+    recovery_reserved = true;
+  }
+
+  Context *on_clean() override {
+    clean_called = true;
+    return nullptr;
+  }
+
+  void on_activate(interval_set<snapid_t> snaps) override {
+    activate_called = true;
+  }
+
+  void on_change(ObjectStore::Transaction &t) override {
+    first_write_in_interval = true;
+    change_called = true;
+  }
+
+  std::pair<ghobject_t, bool> do_delete_work(
+    ObjectStore::Transaction &t, ghobject_t _next) override {
+    delete_work_done = true;
+    return std::make_pair(ghobject_t(), true);
+  }
+
+  void clear_ready_to_merge() override {
+    ready_to_merge_cleared = true;
+  }
+
+  void set_not_ready_to_merge_target(pg_t pgid, pg_t src) override {
+    not_ready_to_merge_target_set = true;
+  }
+
+  void set_not_ready_to_merge_source(pg_t pgid) override {
+    not_ready_to_merge_source_set = true;
+  }
+
+  void set_ready_to_merge_target(eversion_t lu, epoch_t les, epoch_t lec) override {
+    ready_to_merge_target_set = true;
+  }
+
+  void set_ready_to_merge_source(eversion_t lu) override {
+    ready_to_merge_source_set = true;
+  }
+
+  epoch_t cluster_osdmap_trim_lower_bound() override {
+    return 1;
+  }
+
+  void on_backfill_suspended() override {
+    backfill_suspended = true;
+  }
+
+  void on_recovery_cancelled() override {
+    recovery_cancelled = true;
+  }
+
+#if POOL_MIGRATION
+  void on_pool_migration_source_reserved() override {
+    pool_migration_source_reserved = true;
+  }
+#endif
+
+#if POOL_MIGRATION
+  void on_pool_migration_source_suspended() override {
+    pool_migration_source_suspended = true;
+  }
+#endif
+
+#if POOL_MIGRATION
+  void on_pool_migration_target_reserved() override {
+    pool_migration_target_reserved = true;
+  }
+#endif
+
+#if POOL_MIGRATION
+  void on_pool_migration_target_suspended(bool toofull) override {
+    pool_migration_target_suspended = true;
+    pool_migration_target_suspended_toofull = toofull;
+  }
+#endif
+
+  bool try_reserve_recovery_space(
+    int64_t primary_num_bytes,
+    int64_t local_num_bytes,
+    int64_t num_objects) override {
+    recovery_space_reserved = true;
+    if (inject_fail_reserve_recovery_space) {
+      return false;
+    }
+    return true;
+  }
+
+  void unreserve_recovery_space() override {
+    recovery_space_unreserved = true;
+  }
+
+  PGLog::LogEntryHandlerRef get_log_handler(
+    ObjectStore::Transaction &t) override {
+    return std::make_unique<MockPGLogEntryHandler>(backend.get(), &t);
+  }
+
+  void rebuild_missing_set_with_deletes(PGLog &pglog) override {
+    missing_set_rebuilt = true;
+  }
+
+  PerfCounters &get_peering_perf() override {
+    return *recoverystate_perf;
+  }
+
+  PerfCounters &get_perf_logger() override {
+    return *logger_perf;
+  }
+
+  void log_state_enter(const char *state) override {
+    last_state_entered = string(state);
+    state_entered = true;
+  }
+
+  void log_state_exit(
+    const char *state_name, utime_t enter_time,
+    uint64_t events, utime_t event_dur) override {
+    last_state_exited = string(state_name);
+    state_exited = true;
+  }
+
+  void dump_recovery_info(ceph::Formatter *f) const override {
+    recovery_info_dumped = true;
+  }
+
+  OstreamTemp get_clog_info() override {
+    return logger.info();
+  }
+
+  OstreamTemp get_clog_error() override {
+    return logger.error();
+  }
+
+  OstreamTemp get_clog_debug() override {
+    return logger.debug();
+  }
+
+  void on_activate_complete(HBHandle *handle) override {
+    dout(0) << __func__ << dendl;
+    std::list<PGPeeringEventRef> *event_queue;
+    if (inject_event_stall) {
+      event_queue = &stalled_events;
+    } else {
+      event_queue = &events;
+    }
+
+    if (ps->needs_recovery()) {
+      dout(10) << "activate not all replicas are up-to-date, queueing recovery" << dendl;
+      event_queue->push_back(
+          std::make_shared<PGPeeringEvent>(
+            get_osdmap_epoch(),
+            get_osdmap_epoch(),
+            PeeringState::DoRecovery()));
+    } else if (ps->needs_backfill()) {
+      dout(10) << "activate queueing backfill" << dendl;
+      event_queue->push_back(
+          std::make_shared<PGPeeringEvent>(
+            get_osdmap_epoch(),
+            get_osdmap_epoch(),
+            PeeringState::RequestBackfill()));
+#if POOL_MIGRATION
+    } else if (ps->needs_pool_migration()) {
+      dout(10) << "activate queueing pool migration" << dendl;
+      event_queue->push_back(
+          std::make_shared<PGPeeringEvent>(
+            get_osdmap_epoch(),
+            get_osdmap_epoch(),
+            PeeringState::DoPoolMigration()));
+#endif
+    } else {
+      dout(10) << "activate all replicas clean, no recovery" << dendl;
+      event_queue->push_back(
+          std::make_shared<PGPeeringEvent>(
+            get_osdmap_epoch(),
+            get_osdmap_epoch(),
+            PeeringState::AllReplicasRecovered()));
+    }
+    activate_complete_called = true;
+  }
+
+  void on_activate_committed(HBHandle *handle) override {
+    activate_committed_called = true;
+  }
+
+  void on_new_interval() override {
+    new_interval_called = true;
+  }
+
+  void on_pool_change() override {
+    pool_changed = true;
+  }
+
+  void on_role_change() override {
+    role_changed = true;
+  }
+
+  void on_removal(ObjectStore::Transaction &t) override {
+    removal_called = true;
+  }
+
+  // Test state tracking
+  unsigned target_pg_log_entries = 100;
+  bool renew_lease_scheduled = false;
+  bool check_readable_queued = false;
+  bool readable_rechecked = false;
+  bool heartbeat_peers_updated = false;
+  bool probe_targets_set = false;
+  bool probe_targets_cleared = false;
+  bool pg_temp_wanted = false;
+  bool pg_temp_cleared = false;
+  bool pg_migrated_pool_sent = false;
+  bool stats_published = false;
+  bool stats_cleared = false;
+  bool recovery_sources_checked = false;
+  bool blocklisted_watchers_checked = false;
+  bool primary_state_cleared = false;
+  bool delete_work_done = false;
+  bool ready_to_merge_cleared = false;
+  bool not_ready_to_merge_target_set = false;
+  bool not_ready_to_merge_source_set = false;
+  bool ready_to_merge_target_set = false;
+  bool ready_to_merge_source_set = false;
+  bool backfill_suspended = false;
+  bool recovery_cancelled = false;
+  bool pool_migration_source_reserved = false;
+  bool pool_migration_source_suspended = false;
+  bool pool_migration_target_reserved = false;
+  bool pool_migration_target_suspended = false;
+  bool pool_migration_target_suspended_toofull = false;
+  bool recovery_space_reserved = false;
+  bool recovery_space_unreserved = false;
+  bool missing_set_rebuilt = false;
+  string last_state_entered;
+  bool state_entered = false;
+  string last_state_exited;
+  bool state_exited = false;
+  mutable bool recovery_info_dumped = false;
+  epoch_t current_epoch = 1;
+  uint64_t snap_trimq_size = 0;
+  bool prepare_write_called = false;
+  bool scrub_requested_called = false;
+  bool pg_created_sent = false;
+  bool flush_started = false;
+  bool flushed = false;
+  bool io_priority_updated = false;
+  bool io_reservation_cancelled = false;
+  bool remote_recovery_reservation_cancelled = false;
+  bool active_exited = false;
+  bool active_actmap_called = false;
+  bool active_advmap_called = false;
+  bool backfill_reserved = false;
+  bool backfill_cancelled = false;
+  bool recovery_reserved = false;
+  bool clean_called = false;
+  bool activate_called = false;
+  bool activate_complete_called = false;
+  bool change_called = false;
+  bool activate_committed_called = false;
+  bool new_interval_called = false;
+  bool primary_status_changed = false;
+  bool pool_changed = false;
+  bool role_changed = false;
+  bool removal_called = false;
+  bool shutdown_called = false;
+  int messages_sent = 0;
+  int events_scheduled = 0;
+  int io_reservations_requested = 0;
+  int remote_recovery_reservations_requested = 0;
+  int events_on_commit_scheduled = 0;
+  bool first_write_in_interval = false;
+};
 
 // Test fixture for PeeringState tests
 class PeeringStateTest : public ::testing::Test {
@@ -299,10 +1411,10 @@ protected:
 
 #if POOL_MIGRATION
   // Create a 2nd pool as an EC pool and set up migration from the old pool
-  void migrate_to_ec_pool(int k = 2, int m = 2, bool fast_ec = true)
+  // Test cases run on the target pool
+  void migrate_to_ec_pool_target(int k = 2, int m = 2, bool fast_ec = true)
   {
     uint64_t old_pool_id = pool_id;
-    int old_pool_size = pool_size;
     create_ec_pool(k, m, fast_ec);
     OSDMap::Incremental pending_inc(osdmap->get_epoch() + 1);
     const pg_pool_t *sp = osdmap->get_pg_pool(old_pool_id);
@@ -316,10 +1428,21 @@ protected:
     spi->migrating_pgs.emplace(pg_t(0, old_pool_id));
     spi->lowest_migrated_pg = 1;
     apply_incremental(pending_inc);
+    setup_up_acting();
+  }
+#endif
+
+#if POOL_MIGRATION
+  // Create a 2nd pool as an EC pool and set up migration from the old pool
+  // Test cases run on the source pool
+  void migrate_to_ec_pool_source(int k = 2, int m = 2, bool fast_ec = true)
+  {
+    uint64_t old_pool_id = pool_id;
+    int old_pool_size = pool_size;
+    migrate_to_ec_pool_target(k, m, fast_ec);
     // Reset to the source pool
     pool_id = old_pool_id;
     pool_size = old_pool_size;
-    setup_up_acting();
   }
 #endif
 
@@ -980,7 +2103,7 @@ protected:
   }
 
 #if POOL_MIGRATION
-// Helper - migration done
+  // Helper - migration done
   void test_event_migration_done()
   {
     dout(0) << "= test_event_migration_done =" << dendl;
@@ -992,6 +2115,68 @@ protected:
     get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
   }
 #endif
+
+  // Helper - start pool migration on target
+  void test_event_start_target_pool_migration(int64_t num_bytes, int64_t num_objects)
+  {
+    dout(0) << "= test_event_start_target_pool_migration =" << dendl;
+    auto evt = std::make_shared<PGPeeringEvent>(
+      osdmap->get_epoch(),
+      osdmap->get_epoch(),
+      StartTargetPoolMigration(
+        num_bytes,
+        num_objects));
+
+    get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
+  }
+
+  // Helper - stop pool migration on target
+  void test_event_stop_target_pool_migration()
+  {
+    dout(0) << "= test_event_stop_target_pool_migration =" << dendl;
+    auto evt = std::make_shared<PGPeeringEvent>(
+      osdmap->get_epoch(),
+      osdmap->get_epoch(),
+      PeeringState::StopTargetPoolMigration());
+
+    get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
+  }
+
+  // Helper - stop pool migration on source - unfound object
+  void test_event_stop_pool_migration_unfound()
+  {
+    dout(0) << "= test_event_stop_pool_migration_unfound =" << dendl;
+    auto evt = std::make_shared<PGPeeringEvent>(
+      osdmap->get_epoch(),
+      osdmap->get_epoch(),
+      PeeringState::PoolMigrationStoppedUnfound());
+
+    get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
+  }
+
+  // Helper - stop pool migration on source - too full
+  void test_event_stop_pool_migration_toofull()
+  {
+    dout(0) << "= test_event_stop_pool_migration_toofull =" << dendl;
+    auto evt = std::make_shared<PGPeeringEvent>(
+      osdmap->get_epoch(),
+      osdmap->get_epoch(),
+      PeeringState::PoolMigrationStoppedTooFull());
+
+    get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
+  }
+
+  // Helper - stop pool migration on source - revoked
+  void test_event_stop_pool_migration_revoked()
+  {
+    dout(0) << "= test_event_stop_pool_migration_revoked =" << dendl;
+    auto evt = std::make_shared<PGPeeringEvent>(
+      osdmap->get_epoch(),
+      osdmap->get_epoch(),
+      PeeringState::PoolMigrationStoppedRevoked());
+
+    get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
+  }
 
   // Helper - run peering cycle with new epochs if required for upthru or pgtemp
   void test_peering()
@@ -1920,7 +3105,7 @@ TEST_F(PeeringStateTest, Backfill) {
 TEST_F(PeeringStateTest, PoolMigration) {
   dout(0) << "== PoolMigration ==" << dendl;
   // Configure pool migration to an EC pool
-  migrate_to_ec_pool();
+  migrate_to_ec_pool_source();
   // Init
   test_create_peering_state();
   test_init();
@@ -1928,6 +3113,11 @@ TEST_F(PeeringStateTest, PoolMigration) {
   // Full peering cycle
   test_peering();
   // Verify pool migration started
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_source_reserved);
+  // Remote reservations successful
+  get_ps(acting[0])->state_set(PG_STATE_MIGRATING);
+  get_ps(acting[0])->state_clear(PG_STATE_MIGRATION_TOOFULL);
+  get_ps(acting[0])->state_clear(PG_STATE_MIGRATION_WAIT);
   verify_all_active_migrating(eversion_t(), eversion_t());
   // Signal migration complete
   test_event_migration_done();
@@ -1940,33 +3130,57 @@ TEST_F(PeeringStateTest, PoolMigration) {
 #if POOL_MIGRATION
 // Multi-OSD test of peering with pool migration too full
 TEST_F(PeeringStateTest, PoolMigrationTooFull) {
-  dout(0) << "== PoolMigration ==" << dendl;
+  dout(0) << "== PoolMigrationTooFull ==" << dendl;
   // Configure pool migration to an EC pool
-  migrate_to_ec_pool();
+  migrate_to_ec_pool_target();
   // Init
   test_create_peering_state();
   test_init();
   test_event_initialize();
-  // Fail reservation on OSD 1
-  get_listener(acting[1])->inject_fail_reserve_recovery_space = true;
   // Full peering cycle
   test_peering();
+  // Verify that we got to active+clean
+  verify_all_active_clean(eversion_t(), eversion_t());
+
+  // Start target pool migration - Fail reservation on OSD 1
+  get_listener(acting[1])->inject_fail_reserve_recovery_space = true;
+  test_event_start_target_pool_migration(102400, 10);
+  dispatch_all();
+  // Verify that pool migration is stalled with too full
+  EXPECT_EQ(get_listener(acting[0])->events_scheduled, 0);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_suspended);
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_suspended_toofull);
+  EXPECT_TRUE(get_ps(acting[0])->state_test(PG_STATE_MIGRATION_TOOFULL));
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/Clean");
+  EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
+  EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
+  EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
+
+  // Try again - this time rety should be scheduled locally
+  get_listener(acting[0])->pool_migration_target_suspended = false;
+  test_event_start_target_pool_migration(102400, 10);
+  dispatch_all();
   // Verify that pool migration is stalled with too full
   EXPECT_EQ(get_listener(acting[0])->events_scheduled, 1);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
   EXPECT_TRUE(get_ps(acting[0])->state_test(PG_STATE_MIGRATION_TOOFULL));
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/NotMigrating");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/Clean");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
 
   // Fail reservation on OSD 2 as well
   get_listener(acting[2])->inject_fail_reserve_recovery_space = true;
-  dispatch_all_events(true); // run stalled schedule_after event to retry migration
+  dispatch_all_events(true);  // run stalled schedule_after event to retry migration
   dispatch_all();
   // Verify that pool migration is stalled with too full
   EXPECT_EQ(get_listener(acting[0])->events_scheduled, 2);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
   EXPECT_TRUE(get_ps(acting[0])->state_test(PG_STATE_MIGRATION_TOOFULL));
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/NotMigrating");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/Clean");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
@@ -1977,32 +3191,38 @@ TEST_F(PeeringStateTest, PoolMigrationTooFull) {
   dispatch_all_events(true);  // run stalled schedule_after event to retry migration
   dispatch_all();
   // Verify pool migration started
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
   verify_all_active_migrating(eversion_t(), eversion_t());
   // Signal migration complete
-  test_event_migration_done();
+  test_event_stop_target_pool_migration();
   // Verify that we got to active+clean
   verify_all_active_clean(eversion_t(), eversion_t());
-  EXPECT_TRUE(get_listener(acting[0])->pg_migrated_pool_sent);
 }
 #endif
 
 #if POOL_MIGRATION
 // Multi-OSD test of peering with pool migration reservtion preempt
-TEST_F(PeeringStateTest, PoolMigrationPrempt) {
+TEST_F(PeeringStateTest, PoolMigrationPreempt) {
   dout(0) << "== PoolMigration ==" << dendl;
   // Configure pool migration to an EC pool
-  migrate_to_ec_pool();
+  migrate_to_ec_pool_target();
   // Init
   test_create_peering_state();
   test_init();
   test_event_initialize();
-  // Keep preempt reservation event on OSD 1
-  get_listener(acting[1])->inject_keep_preempt = true;
   // Full peering cycle
   test_peering();
+  // Verify that we got to active+clean
+  verify_all_active_clean(eversion_t(), eversion_t());
+
+  // Start target pool migration - Keep preempt reservation event on OSD 1
+  get_listener(acting[1])->inject_keep_preempt = true;
+  test_event_start_target_pool_migration(102400, 10);
+  dispatch_all();
   // Verify pool migration started
   verify_all_active_migrating(eversion_t(), eversion_t());
-  EXPECT_EQ(get_listener(acting[0])->io_reservations_requested, 1);
+  EXPECT_EQ(get_listener(acting[0])->remote_recovery_reservations_requested, 1);
   EXPECT_EQ(get_listener(acting[1])->remote_recovery_reservations_requested, 1);
   EXPECT_EQ(get_listener(acting[2])->remote_recovery_reservations_requested, 1);
   EXPECT_EQ(get_listener(acting[3])->remote_recovery_reservations_requested, 1);
@@ -2010,21 +3230,30 @@ TEST_F(PeeringStateTest, PoolMigrationPrempt) {
   EXPECT_EQ(get_listener(acting[1])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[2])->stalled_events.size(), 0);
   EXPECT_EQ(get_listener(acting[3])->stalled_events.size(), 0);
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingSource");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingTarget");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepRecovering");
-  dout(0) << "= PoolMigration prempt reservation osd 1 =" << dendl;
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
+  get_listener(acting[0])->pool_migration_target_reserved = false;
+  dout(0) << "= PoolMigration preempt reservation osd 1 =" << dendl;
   dispatch_all_events(true); // preempt reservation on OSD 1
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingSource");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingTarget");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepRecovering");
-  // Keep preempt reservation event on OSD 2 as well
-  get_listener(acting[2])->inject_keep_preempt = true;
   dispatch_all();
-  verify_all_active_migrating(eversion_t(), eversion_t());
-  EXPECT_EQ(get_listener(acting[0])->io_reservations_requested, 2);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_suspended);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended_toofull);
+  get_listener(acting[0])->pool_migration_target_suspended = false;
+  verify_all_active_clean(eversion_t(), eversion_t());
+  // Start target pool migration - Keep preempt reservation event on OSD 2 as well
+  get_listener(acting[2])->inject_keep_preempt = true;
+  test_event_start_target_pool_migration(102400, 10);
+  dispatch_all();
+  EXPECT_EQ(get_listener(acting[0])->remote_recovery_reservations_requested, 2);
   EXPECT_EQ(get_listener(acting[1])->remote_recovery_reservations_requested, 2);
   EXPECT_EQ(get_listener(acting[2])->remote_recovery_reservations_requested, 2);
   EXPECT_EQ(get_listener(acting[3])->remote_recovery_reservations_requested, 2);
@@ -2032,21 +3261,31 @@ TEST_F(PeeringStateTest, PoolMigrationPrempt) {
   EXPECT_EQ(get_listener(acting[1])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[2])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[3])->stalled_events.size(), 0);
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingSource");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingTarget");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepRecovering");
-  dout(0) << "= PoolMigration prempt reservation osd 1 and 2 =" << dendl;
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
+  get_listener(acting[0])->pool_migration_target_reserved = false;
+  dout(0) << "= PoolMigration preempt reservation osd 1 and 2 =" << dendl;
   dispatch_all_events(true); // preempt reservation on OSD 1 and 2
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingSource");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingTarget");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepRecovering");
-  // Keep preempt reservation event on OSD 0 (primary) as well
+  dispatch_all();
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_suspended);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended_toofull);
+  get_listener(acting[0])->pool_migration_target_suspended = false;
+  verify_all_active_clean(eversion_t(), eversion_t());
+  // Start target pool migration - Keep preempt reservation event on OSD 0 (primary) as well
   get_listener(acting[0])->inject_keep_preempt = true;
+  test_event_start_target_pool_migration(102400, 10);
   dispatch_all();
   verify_all_active_migrating(eversion_t(), eversion_t());
-  EXPECT_EQ(get_listener(acting[0])->io_reservations_requested, 3);
+  EXPECT_EQ(get_listener(acting[0])->remote_recovery_reservations_requested, 3);
   EXPECT_EQ(get_listener(acting[1])->remote_recovery_reservations_requested, 3);
   EXPECT_EQ(get_listener(acting[2])->remote_recovery_reservations_requested, 3);
   EXPECT_EQ(get_listener(acting[3])->remote_recovery_reservations_requested, 3);
@@ -2054,25 +3293,36 @@ TEST_F(PeeringStateTest, PoolMigrationPrempt) {
   EXPECT_EQ(get_listener(acting[1])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[2])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[3])->stalled_events.size(), 0);
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingSource");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingTarget");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepRecovering");
-  dout(0) << "= PoolMigration prempt reservation osd 0, 1 and 2 =" << dendl;
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
+  get_listener(acting[0])->pool_migration_target_reserved = false;
+  dout(0) << "= PoolMigration preempt reservation osd 0, 1 and 2 =" << dendl;
   // 0 Sends RELEASE first, then 1,2 send REVOKE
   dispatch_events(acting[0], true , 1);
   dispatch_events(acting[1], true , 1);
   dispatch_events(acting[2], true , 1);
   dispatch_all();
   dispatch_events(acting[0], true , 1);
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/WaitLocalPoolMigrationReserved");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/Clean");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepNotRecovering");
   dispatch_all();
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_suspended);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended_toofull);
+  get_listener(acting[0])->pool_migration_target_suspended = false;
+  verify_all_active_clean(eversion_t(), eversion_t());
+  // Start target pool migration - Still capturing premept events
+  test_event_start_target_pool_migration(102400, 10);
+  dispatch_all();
   // Verify pool migration started
   verify_all_active_migrating(eversion_t(), eversion_t());
-  EXPECT_EQ(get_listener(acting[0])->io_reservations_requested, 4);
+  EXPECT_EQ(get_listener(acting[0])->remote_recovery_reservations_requested, 4);
   EXPECT_EQ(get_listener(acting[1])->remote_recovery_reservations_requested, 4);
   EXPECT_EQ(get_listener(acting[2])->remote_recovery_reservations_requested, 4);
   EXPECT_EQ(get_listener(acting[3])->remote_recovery_reservations_requested, 4);
@@ -2080,30 +3330,45 @@ TEST_F(PeeringStateTest, PoolMigrationPrempt) {
   EXPECT_EQ(get_listener(acting[1])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[2])->stalled_events.size(), 1); // captured preempt event
   EXPECT_EQ(get_listener(acting[3])->stalled_events.size(), 0);
-  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingSource");
+  EXPECT_EQ(get_listener(acting[0])->last_state_entered, "Started/Primary/Active/MigratingTarget");
   EXPECT_EQ(get_listener(acting[1])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[2])->last_state_entered, "Started/ReplicaActive/RepRecovering");
   EXPECT_EQ(get_listener(acting[3])->last_state_entered, "Started/ReplicaActive/RepRecovering");
-  dout(0) << "= PoolMigration prempt reservation osd 0, 1 and 2 race hazard =" << dendl;
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
+  get_listener(acting[0])->pool_migration_target_reserved = false;
+  dout(0) << "= PoolMigration preempt reservation osd 0, 1 and 2 race hazard =" << dendl;
   // 1,2 send REVOKE first, then 0 sends RELEASE
   get_listener(acting[0])->inject_keep_preempt = false;
   get_listener(acting[1])->inject_keep_preempt = false;
   get_listener(acting[2])->inject_keep_preempt = false;
-  // 1 and 2 prempt reservation and send messages to osd 0
+  // 1 and 2 preempt reservation and send messages to osd 0
   dispatch_events(acting[1], true);
   dispatch_events(acting[2], true);
   dispatch_cluster_messages(1);
   dispatch_cluster_messages(2);
-  // 0 prempt reservation is slow
+  // 0 preempt reservation is slow
   dispatch_events(acting[0], true);
+  dispatch_all();
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_suspended);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended_toofull);
+  get_listener(acting[0])->pool_migration_target_suspended = false;
+  verify_all_active_clean(eversion_t(), eversion_t());
+  // Start target pool migration
+  test_event_start_target_pool_migration(102400, 10);
   dispatch_all();
   // Verify pool migration started
   verify_all_active_migrating(eversion_t(), eversion_t());
+  EXPECT_TRUE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
+  get_listener(acting[0])->pool_migration_target_reserved = false;
   // Signal migration complete
-  test_event_migration_done();
+  test_event_stop_target_pool_migration();
   // Verify that we got to active+clean
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_reserved);
+  EXPECT_FALSE(get_listener(acting[0])->pool_migration_target_suspended);
   verify_all_active_clean(eversion_t(), eversion_t());
-  EXPECT_TRUE(get_listener(acting[0])->pg_migrated_pool_sent);
 }
 #endif
 
