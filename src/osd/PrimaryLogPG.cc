@@ -15125,7 +15125,6 @@ uint64_t PrimaryLogPG::recover_pool_migration(
       // Reached the end of the current target PG - release reservation once migrations in flight complete
       if (!pool_migrations_in_flight.empty()) {
         dout(20) << __func__ << " waiting for migrations in flight to complete before releasing reservation" << dendl;
-        close_op_ctx(ctx.release());
         // TODO: should return ops, currently stalls migration
         //return ops;
         continue;
@@ -15140,7 +15139,6 @@ uint64_t PrimaryLogPG::recover_pool_migration(
       // Not currently transferring to a target PG - request reservations now
       pool_migration_target_pg = get_target_pg_from_hash(soid);
       send_request_remote_reservation_message(*pool_migration_target_pg, soid);
-      close_op_ctx(ctx.release());
       // TODO: should return ops, currently stalls migration
       //return ops;
       continue;
