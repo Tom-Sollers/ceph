@@ -120,7 +120,8 @@ public:
 	flags(0),
 	source_data_digest(-1), source_omap_digest(-1),
 	data_digest(-1), omap_digest(-1),
-	truncate_seq(0), truncate_size(0)
+	truncate_seq(0), truncate_size(0),
+        whiteout(false)
     {}
   };
 
