@@ -105,6 +105,7 @@ public:
     std::map<std::string, ceph::buffer::list, std::less<>> attrs; // xattrs
     uint64_t truncate_seq;
     uint64_t truncate_size;
+    bool whiteout; ///< Source object is whiteout
     bool is_data_digest() {
       return flags & object_copy_data_t::FLAG_DATA_DIGEST;
     }
