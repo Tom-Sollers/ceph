@@ -128,6 +128,14 @@ struct OSDECPoolCreateRequest {
   void decode_json(JSONObj* obj);
 };
 
+struct OSDPoolMigrateRequest {
+    std::string pool;
+    std::string migrate_from_pool;
+
+    void dump(Formatter* f) const;
+    void decode_json(JSONObj* obj);
+};
+
 struct OSDSetRequest {
   std::string key;
   std::optional<bool> yes_i_really_mean_it = std::nullopt;

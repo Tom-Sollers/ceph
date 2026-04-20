@@ -4,6 +4,7 @@
 #include "include/int_types.h"
 
 #include "common/ceph_mutex.h"
+#include "common/ceph_json.h"
 #include "include/rados/librados.hpp"
 
 #include <iostream>
@@ -13,10 +14,7 @@
 #include <set>
 #include <list>
 #include <string>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <time.h>
+#include <thread>
 #include "Object.h"
 #include "TestOpStat.h"
 #include "test/librados/test.h"
@@ -24,6 +22,7 @@
 #include "common/errno.h"
 #include "osd/HitSet.h"
 #include "common/ceph_crypto.h"
+#include "common/json/OSDStructures.h"
 
 #include "cls/cas/cls_cas_client.h"
 #include "cls/cas/cls_cas_internal.h"
@@ -186,6 +185,7 @@ public:
   uint64_t seq;
   const char *rados_id;
   bool initialized;
+  bool finished;
   std::map<std::string, TestWatchContext*> watches;
   const uint64_t max_size;
   const uint64_t min_stride_size;
@@ -203,6 +203,9 @@ public:
   std::string chunk_algo;
   std::string chunk_size;
   bool timestamp;
+  const bool migrate_pool;
+  const uint8_t migration_interval;
+  std::thread pool_migration_thread;
 
   RadosTestContext(const std::string &pool_name,
 		   int max_in_flight,
@@ -219,6 +222,8 @@ public:
 		   std::string chunk_algo,
 		   std::string chunk_size,
 		   size_t max_attr_len,
+		   const bool migrate_pool,
+		   const uint8_t migration_interval,
 		   const char *id = 0) :
     pool_obj_cont(),
     current_snap(0),
@@ -228,6 +233,7 @@ public:
     max_in_flight(max_in_flight),
     seq_num(0), seq(0),
     rados_id(id), initialized(false),
+    finished(false),
     max_size(max_size), 
     min_stride_size(min_stride_size), max_stride_size(max_stride_size),
     attr_gen(2000, max_attr_len),
@@ -240,8 +246,10 @@ public:
     enable_dedup(enable_dedup),
     chunk_algo(chunk_algo),
     chunk_size(chunk_size),
-    timestamp(timestamp)
-  {
+    timestamp(timestamp),
+    migrate_pool(migrate_pool),
+    migration_interval(migration_interval)
+    {
   }
 
   int init()
@@ -328,6 +336,11 @@ public:
     if (initialized) {
       rados.shutdown();
     }
+    if (migrate_pool) {
+      finished = true;
+      cout_prefix() << __func__ <<  " pool_migration_thread joining" << std::endl;
+      pool_migration_thread.join();
+    }
   }
 
   void loop(TestOpGenerator *gen)
@@ -338,6 +351,10 @@ public:
 
     TestOp *next = gen->next(*this);
     TestOp *waiting = NULL;
+
+    if (migrate_pool) {
+      pool_migration_thread = std::thread(&RadosTestContext::manage_ongoing_pool_migration, this);
+    }
 
     while (next || !inflight.empty()) {
       if (next && next->must_quiesce_other_ops() && !inflight.empty()) {
@@ -712,6 +729,61 @@ public:
     io_ctx.snap_set_read(0);
     return has_snap;
   }
+
+  bool is_pool_migration_in_progress() {
+    std::string outstr;
+    bufferlist outbl;
+
+    if (rados.mon_command( R"({"prefix": "status"})", {}, &outbl, &outstr) != 0) {
+      std::cerr << "Error: could not get ceph status: " << outstr << std::endl;
+      ceph_abort();
+    }
+
+    return (outbl.to_str().contains("Pool migration"));
+  }
+
+  void start_pool_migration(const std::string &source_name, const std::string &target_name) {
+    auto const formatter = std::make_shared<JSONFormatter>(false);
+    std::ostringstream oss;
+
+    messaging::osd::OSDPoolMigrateRequest pool_mig_request{target_name, source_name};
+    encode_json("OSDPoolMigrateRequest", pool_mig_request, formatter.get());
+    formatter.get()->flush(oss);
+
+    std::string outstr;
+    if (rados.mon_command(oss.str(), {}, nullptr, &outstr) != 0) {
+      std::cerr << "Error: could not start pool migration: " << outstr << std::endl;
+      ceph_abort();
+    }
+  }
+
+  void manage_ongoing_pool_migration() {
+    const std::string original_pool_name = pool_name;
+    std::string target_pool_name;
+    int migration_counter = 0;
+    bool needs_wait = false;
+    while (!finished) {
+      int sleep_duration = 60;
+      if (is_pool_migration_in_progress()) {
+        cout_prefix() << __func__ << " migration in progress" << std::endl;
+      } else if (!needs_wait) {
+        target_pool_name = original_pool_name + "_mig" + std::to_string(migration_counter);
+        cout_prefix() << __func__ << " starting new pool migration from "
+                      << pool_name << " to " << target_pool_name << std::endl;
+        start_pool_migration(pool_name, target_pool_name);
+        needs_wait = true;
+      } else {
+        pool_name = target_pool_name;
+        sleep_duration = migration_interval;
+        migration_counter++;
+        needs_wait = false;
+        cout_prefix() << __func__ << ": migration completed, sleeping for "
+              << std::to_string(sleep_duration) << " seconds" << std::endl;
+      }
+      std::this_thread::sleep_for(std::chrono::seconds(sleep_duration));
+    }
+  }
+
  public:
   std::string timestamp_string() {
     if (timestamp) {

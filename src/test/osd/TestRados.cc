@@ -574,6 +574,8 @@ int main(int argc, char **argv)
   string chunk_algo = "";
   string chunk_size = "";
   size_t max_attr_len = 20000;
+  bool migrate_pool = false;
+  uint8_t migration_interval = 60;
 
 
   for (int i = 1; i < argc; ++i) {
@@ -687,6 +689,10 @@ int main(int argc, char **argv)
       chunk_size = argv[++i];
     } else if (strcmp(argv[i], "--timestamps") == 0) {
       timestamp = true;
+    } else if (strcmp(argv[i], "--migrate-pool") == 0) {
+      migrate_pool = true;
+    } else if (strcmp(argv[i], "--migration_interval") == 0) {
+      migration_interval = atoi(argv[++i]);
     } else {
       cerr << "unknown arg " << argv[i] << std::endl;
       usage(argv[0]);
@@ -763,6 +769,8 @@ int main(int argc, char **argv)
     chunk_algo,
     chunk_size,
     max_attr_len,
+    migrate_pool,
+    migration_interval,
     id);
 
   TestOpStat stats;
