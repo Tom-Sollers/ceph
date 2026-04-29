@@ -132,6 +132,7 @@ struct OSDPoolMigrateRequest {
     std::string pool;
     std::string migrate_from_pool;
 
+    std::optional<int> pg_num;
     void dump(Formatter* f) const;
     void decode_json(JSONObj* obj);
 };

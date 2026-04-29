@@ -195,11 +195,13 @@ void OSDPoolMigrateRequest::dump(Formatter* f) const {
   encode_json("prefix", "osd pool create", f);
   encode_json("pool", pool, f);
   encode_json("migrate_from_pool", migrate_from_pool, f);
+  encode_json("pg_num", pg_num, f);
 }
 
 void OSDPoolMigrateRequest::decode_json(JSONObj* obj) {
   JSONDecoder::decode_json("pool", pool, obj);
   JSONDecoder::decode_json("migrate_from_pool", migrate_from_pool, obj);
+  JSONDecoder::decode_json("pg_num", pg_num, obj);
 }
 
 void OSDSetRequest::dump(Formatter* f) const {
