@@ -9989,6 +9989,7 @@ void PrimaryLogPG::process_copy_chunk(hobject_t oid, ceph_tid_t tid, int r)
                  << cop->results.temp_oid << dendl; // BILL:FIXME remove BILL once created in testing
         ObjectContextRef tempobc = get_object_context(cop->results.temp_oid, true);
         ctx->op_t->remove(cop->results.temp_oid);
+        ctx->op_t->add_obc(tempobc);
         log_transaction = true;
       }
       if (add_trim_to_ctx(ctx.get(), oid, oid.snap, cobc, head_obc) < 0) {
