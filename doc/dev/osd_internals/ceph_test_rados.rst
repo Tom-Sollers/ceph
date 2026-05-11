@@ -162,14 +162,11 @@ Pool Migration
     Begin a pool migration from the pool receiving operations to a new pool.
     If the migration completes during the test, another be scheduled such that there is
     always an ongoing migration.
+
     .. note::
 
         This will migrate all objects from the original pool to a new pool which has the same name as
         the original pool, followed by a migration suffix.
-        [--migrate-pool]
-        [--initial-migration-delay <seconds>]
-        [--migration-interval <seconds>]
-        [--migration-pg-count <pg_num>]
 
 ``--initial-migration-delay <seconds>``
     How long to wait in seconds after the test has began to
