@@ -277,12 +277,12 @@ public:
     return false;
   }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   void update_migration_watermark(const hobject_t &watermark) override {
   }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   std::optional<hobject_t> consider_updating_migration_watermark(
     std::set<hobject_t> &deleted) override {
     return std::nullopt;
@@ -849,7 +849,7 @@ class MockPeeringListener : public PeeringState::PeeringListener {
     pg_temp_cleared = true;
   }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   void send_pg_migrated_pool() override {
     pg_migrated_pool_sent = true;
   }
@@ -947,25 +947,25 @@ class MockPeeringListener : public PeeringState::PeeringListener {
     recovery_cancelled = true;
   }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   void on_pool_migration_source_reserved() override {
     pool_migration_source_reserved = true;
   }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   void on_pool_migration_source_suspended() override {
     pool_migration_source_suspended = true;
   }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   void on_pool_migration_target_reserved() override {
     pool_migration_target_reserved = true;
   }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   void on_pool_migration_target_suspended(bool toofull) override {
     pool_migration_target_suspended = true;
     pool_migration_target_suspended_toofull = toofull;
@@ -1059,7 +1059,7 @@ class MockPeeringListener : public PeeringState::PeeringListener {
             get_osdmap_epoch(),
             get_osdmap_epoch(),
             PeeringState::RequestBackfill()));
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
     } else if (ps->needs_pool_migration()) {
       dout(10) << "activate queueing pool migration" << dendl;
       event_queue->push_back(
@@ -1413,7 +1413,7 @@ protected:
     setup_up_acting();
   }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   // Create a 2nd pool as an EC pool and set up migration from the old pool
   // Test cases run on the target pool
   void migrate_to_ec_pool_target(int k = 2, int m = 2, bool fast_ec = true)
@@ -1436,7 +1436,7 @@ protected:
   }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   // Create a 2nd pool as an EC pool and set up migration from the old pool
   // Test cases run on the source pool
   void migrate_to_ec_pool_source(int k = 2, int m = 2, bool fast_ec = true)
@@ -2106,7 +2106,7 @@ protected:
     get_ps(acting_primary)->handle_event(evt, get_ctx(acting_primary));
   }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   // Helper - migration done
   void test_event_migration_done()
   {
@@ -2211,7 +2211,7 @@ protected:
     EXPECT_TRUE(ps->is_clean());
     EXPECT_FALSE(ps->is_recovering());
     EXPECT_FALSE(ps->is_backfilling());
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
     EXPECT_FALSE(ps->is_migrating());
 #endif
   }
@@ -2225,7 +2225,7 @@ protected:
     EXPECT_FALSE(ps->is_clean());
     EXPECT_TRUE(ps->is_recovering());
     EXPECT_FALSE(ps->is_backfilling());
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
     EXPECT_FALSE(ps->is_migrating());
 #endif
   }
@@ -2239,7 +2239,7 @@ protected:
     EXPECT_FALSE(ps->is_clean());
     EXPECT_FALSE(ps->is_recovering());
     EXPECT_TRUE(ps->is_backfilling());
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
     EXPECT_FALSE(ps->is_migrating());
 #endif
   }
@@ -2253,7 +2253,7 @@ protected:
     EXPECT_FALSE(ps->is_clean());
     EXPECT_FALSE(ps->is_recovering());
     EXPECT_FALSE(ps->is_backfilling());
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
     EXPECT_TRUE(ps->is_migrating());
 #endif
   }
@@ -2437,7 +2437,7 @@ protected:
     verify_logs();
   }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
   // Helper - verify all OSDs in active+migrating state with log checks
   void verify_all_active_migrating(const eversion_t& expected_update = eversion_t(),
                                 const eversion_t& expected_tail = eversion_t())
@@ -3104,7 +3104,7 @@ TEST_F(PeeringStateTest, Backfill) {
   verify_all_active_clean(expected, expected_tail);
 }
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
 // Multi-OSD test of peering with pool migration all the way to active+clean
 TEST_F(PeeringStateTest, PoolMigration) {
   dout(0) << "== PoolMigration ==" << dendl;
@@ -3131,7 +3131,7 @@ TEST_F(PeeringStateTest, PoolMigration) {
 }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
 // Multi-OSD test of peering with pool migration too full
 TEST_F(PeeringStateTest, PoolMigrationTooFull) {
   dout(0) << "== PoolMigrationTooFull ==" << dendl;
@@ -3205,7 +3205,7 @@ TEST_F(PeeringStateTest, PoolMigrationTooFull) {
 }
 #endif
 
-#if POOL_MIGRATION
+#if SERVER_UMBRELLA
 // Multi-OSD test of peering with pool migration reservtion preempt
 TEST_F(PeeringStateTest, PoolMigrationPreempt) {
   dout(0) << "== PoolMigration ==" << dendl;
