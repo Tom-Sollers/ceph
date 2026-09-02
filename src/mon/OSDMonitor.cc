@@ -6462,7 +6462,11 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
      f->dump_string("pool_name", osdmap.get_pool_name(pid));
    }
  } else {
-   rdata.append(osdmap.get_pool_name(pid) + "\n");
+	  // Indent migration target pools to show they are the latest target
+	  // of a migration (in-progress or completed), matching `ceph osd tree`
+	  // indentation style.
+	  const std::string indent = osdmap.is_pool_migration_target(pid) ? "    " : "";
+   rdata.append(indent + osdmap.get_pool_name(pid) + "\n");
  }
       }
       if (f) {

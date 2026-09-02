@@ -4429,6 +4429,11 @@ void OSDMap::print_pools(CephContext *cct, ostream& out) const
       continue;
     }
 
+    // Indent migration target pools to show they are the latest target of
+    // a migration (in-progress or completed), matching the depth-based
+    // indentation of `ceph osd tree`.
+    const std::string indent = is_pool_migration_target(pid) ? "    " : "";
+
     std::string name("<unknown>");
     const auto &pni = pool_name.find(pid);
     if (pni != pool_name.end())
@@ -4461,24 +4466,24 @@ void OSDMap::print_pools(CephContext *cct, ostream& out) const
       }
     }
 
-    out << "pool " << display_pid
+    out << indent << "pool " << display_pid
 	<< " '" << name
 	<< "' " << pdata
 	<< rb_score_str << "\n";
     if (rb_info.err_msg.length() > 0) {
-      out << (rc < 0 ? " ERROR: " : " Warning: ") << rb_info.err_msg << "\n";
+      out << indent << (rc < 0 ? " ERROR: " : " Warning: ") << rb_info.err_msg << "\n";
     }
 
   //TODO - print error messages here.
 
     for (const auto &snap : pdata.snaps)
-      out << "\tsnap " << snap.second.snapid << " '" << snap.second.name << "' " << snap.second.stamp << "\n";
+      out << indent << "\tsnap " << snap.second.snapid << " '" << snap.second.name << "' " << snap.second.stamp << "\n";
 
     if (!pdata.removed_snaps.empty())
-      out << "\tremoved_snaps " << pdata.removed_snaps << "\n";
+      out << indent << "\tremoved_snaps " << pdata.removed_snaps << "\n";
     auto p = removed_snaps_queue.find(pid);
     if (p != removed_snaps_queue.end()) {
-      out << "\tremoved_snaps_queue " << p->second << "\n";
+      out << indent << "\tremoved_snaps_queue " << p->second << "\n";
     }
   }
   out << std::endl;

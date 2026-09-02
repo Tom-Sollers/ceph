@@ -1441,6 +1441,15 @@ public:
   bool have_pg_pool(int64_t p) const {
     return pools.count(p);
   }
+  /// Returns true if any pool has migration_target pointing at \p pid,
+  /// covering both in-progress and completed migrations.
+  bool is_pool_migration_target(int64_t pid) const {
+    for (const auto &[id, pdata] : pools) {
+      if (pdata.migration_target.has_value() && *pdata.migration_target == pid)
+        return true;
+    }
+    return false;
+  }
   const pg_pool_t* get_pg_pool(int64_t p) const {
     auto i = pools.find(p);
     if (i != pools.end())
