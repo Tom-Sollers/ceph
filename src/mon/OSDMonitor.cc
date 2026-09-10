@@ -6427,6 +6427,7 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
     } else {
       if (f)
  f->open_array_section("pools");
+      std::vector<int64_t> displayed_pools;
       for (auto &[pid, pdata] : osdmap.get_pools()) {
  // Without --show-all, suppress source/intermediate pools and only
  // show the tip of each migration chain (the target pool).
@@ -6459,13 +6460,41 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
      f->dump_string("pool_name", osdmap.get_pool_name(pid));
    }
  } else {
-  // With --show-all, indent only the root pool (the original source
-  // that has no migration_src of its own) so it is visually nested
-  // under the tip.  Intermediate pools and the tip sit at column 0.
-  const std::string indent =
-      (show_all && pdata.migration_target.has_value() &&
-       !pdata.migration_src.has_value()) ? "    " : "";
-  rdata.append(indent + osdmap.get_pool_name(pid) + "\n");
+    if (show_all) {
+      auto found = std::find(displayed_pools.begin(), displayed_pools.end(), pid);
+      if (found != displayed_pools.end()) {
+        continue; // This pool has alreay been displayed as part of a migration cascade
+      }
+      auto check_id = pdata.migration_target.value_or(pid);
+      std::vector<int64_t> cascade;
+
+      for (auto &[pool_id, pool_data] : osdmap.get_pools()) { // Loop through all the pools to get the migration cascade 
+        if (pool_data.migration_target == check_id) {
+          cascade.push_back(pool_id);
+        }
+      }
+      if (cascade.empty()) { //if there is no cascade then this pool is not in a migration cascade so output it normally
+        rdata.append(osdmap.get_pool_name(pid) + "\n"); // since this is a standalone pool there is also no need to add it to the outputted pools list as it will only ever occur once
+      } else { // there is a migration cascade so now output them together 
+        rdata.append(osdmap.get_pool_name(cascade.front()) + "\n"); // Print the root pool unindented
+        displayed_pools.push_back(cascade.front()); //Add this pool to the list of pools that has been outputted already
+        for (size_t i = 1; i < cascade.size(); i++) {
+          rdata.append("    " + osdmap.get_pool_name(cascade[i]) + "\n"); // Print the other pools in the cascade indented
+          displayed_pools.push_back(cascade[i]);
+        }
+        rdata.append("    " + osdmap.get_pool_name(check_id) + "\n"); //finally print the current target pool also indented
+        displayed_pools.push_back(check_id);
+      }
+    } else {
+      rdata.append(osdmap.get_pool_name(pid) + "\n");
+    }
+
+
+
+
+
+
+
 }
       }
       if (f) {
