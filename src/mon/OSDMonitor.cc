@@ -6418,42 +6418,39 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
   } else if (prefix == "osd pool ls") {
     string detail;
     cmd_getval(cmdmap, "detail", detail);
+    bool show_all = false;
+    cmd_getval(cmdmap, "show_all", show_all);
     if (!f && detail == "detail") {
       ostringstream ss;
-      osdmap.print_pools(cct, ss);
+      osdmap.print_pools(cct, ss, show_all);
       rdata.append(ss.str());
     } else {
       if (f)
  f->open_array_section("pools");
       for (auto &[pid, pdata] : osdmap.get_pools()) {
- // For plain and JSON listing, only show the tip of each migration
- // chain (the latest target pool, which has no migration_target set)
- // and non-migrating pools. All intermediate/source pools in a chain
- // are suppressed — the tip represents the whole chain.
- if (pdata.is_migration_src()) {
+ // Without --show-all, suppress source/intermediate pools and only
+ // show the tip of each migration chain (the target pool).
+ // With --show-all, show every pool in the chain.
+ if (!show_all && pdata.is_migration_src()) {
    continue;
  }
  if (f) {
    if (detail == "detail") {
-     // For detail, show tip name/stats but use the root pool's ID
-     // so operators see the original pool ID that clients reference.
-     // The root is the pool with the lowest ID that has migration_target
-     // pointing at this tip (completed stubs have migration_src cleared
-     // so we cannot walk backwards — scan forward instead).
-     // Find the root pool ID: scan for the lowest-ID pool whose
-     // migration_target points at this tip. We cannot rely on
-     // migration_src being set on the tip — it is cleared when
-     // each segment completes. Any pool pointing here is a chain member.
-     int64_t root_pid = pid;
-     for (auto &[scan_pid, scan_pool] : osdmap.get_pools()) {
-       if (scan_pool.migration_target.has_value() &&
-    *scan_pool.migration_target == pid &&
-    scan_pid < root_pid) {
-  root_pid = scan_pid;
+       // Without --show-all, show the root pool's ID for the migration
+       // target so operators see the original pool ID that clients still
+       // reference.  With --show-all, every pool uses its own real ID.
+       int64_t display_pid = pid;
+       if (!show_all && osdmap.is_pool_migration_target(pid)) {
+         for (auto &[scan_pid, scan_pool] : osdmap.get_pools()) {
+  if (scan_pool.migration_target.has_value() &&
+      *scan_pool.migration_target == pid &&
+      scan_pid < display_pid) {
+    display_pid = scan_pid;
+  }
+         }
        }
-     }
      f->open_object_section("pool");
-     f->dump_int("pool_id", root_pid);
+     f->dump_int("pool_id", display_pid);
      f->dump_string("pool_name", osdmap.get_pool_name(pid));
      pdata.dump(f.get());
      osdmap.dump_read_balance_score(cct, pid, pdata, f.get());
@@ -6462,12 +6459,14 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
      f->dump_string("pool_name", osdmap.get_pool_name(pid));
    }
  } else {
-	  // Indent migration target pools to show they are the latest target
-	  // of a migration (in-progress or completed), matching `ceph osd tree`
-	  // indentation style.
-	  const std::string indent = osdmap.is_pool_migration_target(pid) ? "    " : "";
-   rdata.append(indent + osdmap.get_pool_name(pid) + "\n");
- }
+  // With --show-all, indent only the root pool (the original source
+  // that has no migration_src of its own) so it is visually nested
+  // under the tip.  Intermediate pools and the tip sit at column 0.
+  const std::string indent =
+      (show_all && pdata.migration_target.has_value() &&
+       !pdata.migration_src.has_value()) ? "    " : "";
+  rdata.append(indent + osdmap.get_pool_name(pid) + "\n");
+}
       }
       if (f) {
  f->close_section();

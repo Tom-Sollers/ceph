@@ -4420,19 +4420,21 @@ string OSDMap::get_flag_string() const
   return get_flag_string(flags);
 }
 
-void OSDMap::print_pools(CephContext *cct, ostream& out) const
+void OSDMap::print_pools(CephContext *cct, ostream& out, bool show_all) const
 {
   for (const auto &[pid, pdata] : pools) {
-    // Only show the tip of each migration chain (pool with no migration_target)
-    // and non-migrating pools. Source/intermediate pools are suppressed.
-    if (pdata.is_migration_src()) {
+    // Without --show-all, suppress source/intermediate pools and only
+    // show the tip of each migration chain (the target pool).
+    if (!show_all && pdata.is_migration_src()) {
       continue;
     }
 
-    // Indent migration target pools to show they are the latest target of
-    // a migration (in-progress or completed), matching the depth-based
-    // indentation of `ceph osd tree`.
-    const std::string indent = is_pool_migration_target(pid) ? "    " : "";
+    // With --show-all, indent only the root pool (the original source that
+    // has no migration_src of its own) so it is visually nested under the
+    // tip.  Intermediate pools and the tip itself sit at column 0.
+    const std::string indent =
+        (show_all && pdata.migration_target.has_value() &&
+         !pdata.migration_src.has_value()) ? "    " : "";
 
     std::string name("<unknown>");
     const auto &pni = pool_name.find(pid);
@@ -4448,21 +4450,17 @@ void OSDMap::print_pools(CephContext *cct, ostream& out) const
 		  " read_balance_score %.2f", rb_info.acting_adj_score);
     }
 
-    // For migration targets, show the tip's name and stats but print the
-    // root pool's ID (the original source that clients still reference).
-    // Completed stubs have migration_src cleared so we cannot walk
-    // backwards — instead scan all pools for the lowest ID that has
-    // migration_target pointing at this tip.
-    // Find the root pool ID: scan for the lowest-ID pool whose
-    // migration_target points at this tip. We cannot rely on
-    // migration_src being set on the tip — it is cleared when
-    // each segment completes. Any pool pointing here is a chain member.
+    // Without --show-all, show the root pool's ID for the migration target
+    // so operators see the original pool ID that clients still reference.
+    // With --show-all, every pool uses its own real ID.
     int64_t display_pid = pid;
-    for (const auto &[scan_pid, scan_pool] : pools) {
-      if (scan_pool.migration_target.has_value() &&
-          *scan_pool.migration_target == pid &&
-          scan_pid < display_pid) {
-        display_pid = scan_pid;
+    if (!show_all && is_pool_migration_target(pid)) {
+      for (const auto &[scan_pid, scan_pool] : pools) {
+        if (scan_pool.migration_target.has_value() &&
+            *scan_pool.migration_target == pid &&
+            scan_pid < display_pid) {
+          display_pid = scan_pid;
+        }
       }
     }
 

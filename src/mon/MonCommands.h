@@ -1128,7 +1128,8 @@ COMMAND("osd pool force-remove-snap "
 	"order to cause OSDs to re-trim them.",
 	"osd", "rw")
 COMMAND("osd pool ls "
-	"name=detail,type=CephChoices,strings=detail,req=false",
+	"name=detail,type=CephChoices,strings=detail,req=false "
+	"name=show_all,type=CephBool,req=false",
 	"list pools", "osd", "r")
 COMMAND("osd pool create "
 	"name=pool,type=CephPoolname "
