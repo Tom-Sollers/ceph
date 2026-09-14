@@ -1225,7 +1225,9 @@ Subcommand ``ls`` list pools
 
 Usage::
 
-    ceph osd pool ls {detail}
+    ceph osd pool ls [{detail}] [--show-all]
+
+Display a list of pools. Pass ``--show-all`` to show hidden pools.
 
 Subcommand ``mksnap`` makes snapshot <snap> in <pool>.
 
