@@ -15,9 +15,9 @@ that was just released (X-1).2.0.
 Versions and tags
 -----------------
 
-- [ ] Update CMakeLists.txt VERSION (right at the top to X.0.0)
-- [ ] Update src/librbd/CMakeLists.txt VERSION (librbd target at the bottom to 1.X.0)
-- [ ] Update src/ceph_release with the new release name, number, and type ('dev')
+- [x] Update CMakeLists.txt VERSION (right at the top to X.0.0)
+- [x] Update src/librbd/CMakeLists.txt VERSION (librbd target at the bottom to 1.X.0)
+- [x] Update src/ceph_release with the new release name, number, and type ('dev')
 - [ ] Initial tag vX.0.0 so that we can distinguish from (and sort after) the backported (X-1).2.Z versions.
 
 .. note::
@@ -31,12 +31,12 @@ Define release names and constants
 
 Make sure X (and, ideally, X+1) is defined:
 
-- [ ] src/common/ceph_releases.h (`ceph_release_t`)
-- [ ] src/common/ceph_strings.cc (`ceph_release_name()`)
-- [ ] src/include/rados.h (`CEPH_RELEASE_*` and `MAX`)
-- [ ] src/include/rbd/librbd.h (`LIBRBD_VER_MINOR` to X)
-- [ ] src/mds/cephfs_features.h (`CEPHFS_CURRENT_RELEASE`)
-- [ ] src/mon/mon_types.h (`ceph::features::mon::FEATURE_*` and related structs and helpers)
+- [x] src/common/ceph_releases.h (`ceph_release_t`)
+- [x] src/common/ceph_strings.cc (`ceph_release_name()`)
+- [x] src/include/rados.h (`CEPH_RELEASE_*` and `MAX`)
+- [x] src/include/rbd/librbd.h (`LIBRBD_VER_MINOR` to X)
+- [x] src/mds/cephfs_features.h (`CEPHFS_CURRENT_RELEASE`)
+- [x] src/mon/mon_types.h (`ceph::features::mon::FEATURE_*` and related structs and helpers)
 
 Github Actions
 ~~~~~~~~~~~~~~
@@ -47,17 +47,17 @@ Scripts
 ~~~~~~~
 
 - [ ] src/script/backport-create-issue (`releases()`)
-- [ ] src/script/ceph-release-notes (up to X)
+- [x] src/script/ceph-release-notes (up to X)
 
 Misc
 ~~~~
-- [ ] update src/ceph-volume/ceph_volume/__init__.py (`__release__`)
-- [ ] update src/cephadm/cephadmlib/constants.py (`DEFAULT_IMAGE_RELEASE` and `LATEST_STABLE_RELEASE` to X)
+- [x] update src/ceph-volume/ceph_volume/__init__.py (`__release__`)
+- [x] update src/cephadm/cephadmlib/constants.py (`DEFAULT_IMAGE_RELEASE` and `LATEST_STABLE_RELEASE` to X)
 
 Feature bits
 ------------
 
-- [ ] ensure that `SERVER_X` is defined
+- [x] ensure that `SERVER_X` is defined
 - [ ] change any features `DEPRECATED` in release X-3 are now marked `RETIRED`.
 - [ ] look for features that (1) were present in X-2 and (2) have no
   client dependency and mark them `DEPRECATED` as of X.
