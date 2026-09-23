@@ -1777,7 +1777,7 @@ struct StructVChecker
 // DENC_START interface suggests it is checking compatibility,
 // but the feature was unimplemented until SQUID.
 // Due to -2 compatibility rule we cannot bump up compat until U____ release.
-// SQUID=19 T____=20 U____=21
+// SQUID=19 T____=20 U____=21 V____=22
 
 #define DENC_START(_v, compat, p)					\
   StructVChecker<_v> struct_v{_v};					\
