@@ -3242,6 +3242,9 @@ bool OSDMap::primary_changed_broken(
 uint64_t OSDMap::get_encoding_features() const
 {
   uint64_t f = SIGNIFICANT_FEATURES;
+  if (require_osd_release < ceph_release_t::vampire) {
+    f &= ~CEPH_FEATURE_SERVER_VAMPIRE;
+  }
   if (require_osd_release < ceph_release_t::umbrella) {
     f &= ~CEPH_FEATURE_SERVER_UMBRELLA;
   }
