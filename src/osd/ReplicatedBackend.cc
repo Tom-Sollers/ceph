@@ -1442,8 +1442,8 @@ void ReplicatedBackend::calc_head_subsets(
     c.snap = snapset.clones[j];
     prev.intersection_of(snapset.clone_overlap[snapset.clones[j]]);
     if (!missing.is_missing(c) &&
-	c < last_backfill &&
-	get_parent()->try_lock_for_read(c, manager)) {
+        c <= last_backfill &&
+        get_parent()->try_lock_for_read(c, manager)) {
       dout(10) << "calc_head_subsets " << head << " has prev " << c
 	       << " overlap " << prev << dendl;
       cloning = prev;
@@ -1516,8 +1516,8 @@ void ReplicatedBackend::calc_clone_subsets(
     c.snap = snapset.clones[j];
     prev.intersection_of(snapset.clone_overlap[snapset.clones[j]]);
     if (!missing.is_missing(c) &&
-	c < last_backfill &&
-	get_parent()->try_lock_for_read(c, manager)) {
+        c <= last_backfill &&
+        get_parent()->try_lock_for_read(c, manager)) {
       dout(10) << "calc_clone_subsets " << soid << " has prev " << c
 	       << " overlap " << prev << dendl;
       clone_subsets[c] = prev;
@@ -1537,8 +1537,8 @@ void ReplicatedBackend::calc_clone_subsets(
     c.snap = snapset.clones[j];
     next.intersection_of(snapset.clone_overlap[snapset.clones[j-1]]);
     if (!missing.is_missing(c) &&
-	c < last_backfill &&
-	get_parent()->try_lock_for_read(c, manager)) {
+        c <= last_backfill &&
+        get_parent()->try_lock_for_read(c, manager)) {
       dout(10) << "calc_clone_subsets " << soid << " has next " << c
 	       << " overlap " << next << dendl;
       clone_subsets[c] = next;
@@ -1547,6 +1547,27 @@ void ReplicatedBackend::calc_clone_subsets(
     }
     dout(10) << "calc_clone_subsets " << soid << " does not have next " << c
 	     << " overlap " << next << dendl;
+  }
+
+  // overlap with head (newest version of object)
+  if (clone_subsets.empty() && snapset.clones.size() > 0) {
+    hobject_t head = soid.get_head();
+    // Compute overlap from a clean interval, not the loop-dirtied `next`.
+    interval_set<uint64_t> head_overlap;
+    if (size)
+      head_overlap.insert(0, size);
+    head_overlap.intersection_of(snapset.clone_overlap[snapset.clones.back()]);
+    if (!missing.is_missing(head) &&
+        head <= last_backfill &&
+        get_parent()->try_lock_for_read(head, manager)) {
+      dout(10) << "calc_clone_subsets " << soid << " has head " << head
+               << " overlap " << head_overlap << dendl;
+      clone_subsets[head] = head_overlap;
+      cloning.union_of(head_overlap);
+    } else {
+      dout(10) << "calc_clone_subsets " << soid << " does not have head " << head
+               << " overlap " << head_overlap << dendl;
+    }
   }
 
   if (cloning.num_intervals() > g_conf().get_val<uint64_t>("osd_recover_clone_overlap_limit")) {
