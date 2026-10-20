@@ -14099,12 +14099,11 @@ uint64_t PrimaryLogPG::recover_replicas(uint64_t max, ThreadPool::TPHandle &hand
       }
 
       if (soid.is_snap() &&
-      (recovery_state.get_pg_log().get_missing().is_missing(soid.get_head()) ||
-      m.is_missing(soid.get_head()) ||
-      recovering.count(soid.get_head()))) {
-        dout(10) << __func__ << ": " << soid.get_head()
-          << " still missing or recovering on primary or replica osd." << peer << dendl;
-        continue;
+	  recovery_state.get_pg_log().get_missing().is_missing(
+	    soid.get_head())) {
+	dout(10) << __func__ << ": " << soid.get_head()
+		 << " still missing on primary" << dendl;
+	continue;
       }
 
       if (recovery_state.get_pg_log().get_missing().is_missing(soid)) {
@@ -14376,81 +14375,57 @@ uint64_t PrimaryLogPG::recover_backfill(
 		 << " on peers " << keep_ver_targs << dendl;
 	//ceph_assert(!waiting_for_degraded_object.count(check));
       }
-			bool deferred_snap = false;
-			if (backfill_info.begin.is_snap()) {
-				hobject_t head = backfill_info.begin.get_head();
-				vector<pg_shard_t> all_push_preview = need_ver_targs;
-				all_push_preview.insert(all_push_preview.end(),
-						        missing_targs.begin(), missing_targs.end());
-				for (const pg_shard_t& targ : all_push_preview) {
-					const pg_info_t& pinfo = recovery_state.get_peer_info(targ);
-					if (head > pinfo.last_backfill) {
-						deferred_snap = true;
-						break;
-					}
-				}
-				if (deferred_snap) {
-					dout(10) << __func__ << " deferring snap " << backfill_info.begin
-						 << " until head " << head
-						 << " is backfilled to target first" << dendl;
-					*work_started = true;
-				}
-			}
+      if (!need_ver_targs.empty() || !missing_targs.empty()) {
+	ObjectContextRef obc = get_object_context(backfill_info.begin, false);
+	ceph_assert(obc);
+	if (obc->get_recovery_read()) {
+	  if (!need_ver_targs.empty()) {
+	    dout(20) << " BACKFILL replacing " << check
+		   << " with ver " << obj_v
+		   << " to peers " << need_ver_targs << dendl;
+	  }
+	  if (!missing_targs.empty()) {
+	    dout(20) << " BACKFILL pushing " << backfill_info.begin
+	         << " with ver " << obj_v
+	         << " to peers " << missing_targs << dendl;
+	  }
+	  vector<pg_shard_t> all_push = need_ver_targs;
+	  all_push.insert(all_push.end(), missing_targs.begin(), missing_targs.end());
 
-			if (!deferred_snap && (!need_ver_targs.empty() || !missing_targs.empty())) {
-				ObjectContextRef obc = get_object_context(backfill_info.begin, false);
-				ceph_assert(obc);
+	  handle.reset_tp_timeout();
+	  int r = prep_backfill_object_push(backfill_info.begin, obj_v, obc, all_push, h);
+	  if (r < 0) {
+	    *work_started = true;
+	    dout(0) << __func__ << " Error " << r << " trying to backfill " << backfill_info.begin << dendl;
+	    break;
+	  }
+	  ops++;
+	} else {
+	  *work_started = true;
+	  dout(20) << "backfill blocking on " << backfill_info.begin
+		   << "; could not get rw_manager lock" << dendl;
+	  break;
+	}
+      }
+      dout(20) << "need_ver_targs=" << need_ver_targs
+	       << " keep_ver_targs=" << keep_ver_targs << dendl;
+      dout(20) << "backfill_targets=" << get_backfill_targets()
+	       << " missing_targs=" << missing_targs
+	       << " skip_targs=" << skip_targs << dendl;
 
-				if (obc->get_recovery_read()) {
-					if (!need_ver_targs.empty()) {
-						dout(20) << " BACKFILL replacing " << check
-							 << " with ver " << obj_v
-							 << " to peers " << need_ver_targs << dendl;
-					}
-					if (!missing_targs.empty()) {
-						dout(20) << " BACKFILL pushing " << backfill_info.begin
-							 << " with ver " << obj_v
-							 << " to peers " << missing_targs << dendl;
-					}
-					vector<pg_shard_t> all_push = need_ver_targs;
-					all_push.insert(all_push.end(), missing_targs.begin(), missing_targs.end());
-
-					handle.reset_tp_timeout();
-					int r = prep_backfill_object_push(backfill_info.begin, obj_v, obc, all_push, h);
-					if (r < 0) {
-						*work_started = true;
-						dout(0) << __func__ << " Error " << r << " trying to backfill " << backfill_info.begin << dendl;
-						break;
-					}
-					ops++;
-				} else {
-					*work_started = true;
-					dout(20) << "backfill blocking on " << backfill_info.begin
-						 << "; could not get rw_manager lock" << dendl;
-					break;
-				}
-			}
-			dout(20) << "need_ver_targs=" << need_ver_targs
-				 << " keep_ver_targs=" << keep_ver_targs << dendl;
-			dout(20) << "backfill_targets=" << get_backfill_targets()
-				 << " missing_targs=" << missing_targs
-				 << " skip_targs=" << skip_targs << dendl;
-
-			if (!deferred_snap) {
-				last_backfill_started = backfill_info.begin;
-				add_to_stat.insert(backfill_info.begin); // XXX: Only one for all pushes?
-			}
-			backfill_info.pop_front();
-			vector<pg_shard_t> check_targets = need_ver_targs;
-			check_targets.insert(check_targets.end(), keep_ver_targs.begin(), keep_ver_targs.end());
-			for (vector<pg_shard_t>::iterator i = check_targets.begin();
-				     i != check_targets.end();
-				     ++i) {
-				pg_shard_t bt = *i;
-				ReplicaBackfillInterval& pbi = peer_backfill_info[bt];
-				pbi.pop_front();
-			}
-		}
+      last_backfill_started = backfill_info.begin;
+      add_to_stat.insert(backfill_info.begin); // XXX: Only one for all pushes?
+      backfill_info.pop_front();
+      vector<pg_shard_t> check_targets = need_ver_targs;
+      check_targets.insert(check_targets.end(), keep_ver_targs.begin(), keep_ver_targs.end());
+      for (vector<pg_shard_t>::iterator i = check_targets.begin();
+	   i != check_targets.end();
+	   ++i) {
+        pg_shard_t bt = *i;
+        ReplicaBackfillInterval& pbi = peer_backfill_info[bt];
+        pbi.pop_front();
+      }
+    }
   }
 
   for (set<hobject_t>::iterator i = add_to_stat.begin();
@@ -14510,7 +14485,7 @@ uint64_t PrimaryLogPG::recover_backfill(
   for (map<hobject_t, pg_stat_t>::iterator i =
 	 pending_backfill_updates.begin();
        i != pending_backfill_updates.end() &&
-  (backfills_in_flight.empty() || i->first < *(backfills_in_flight.begin()));
+	 i->first < next_backfill_to_complete;
        pending_backfill_updates.erase(i++)) {
     dout(20) << " pending_backfill_update " << i->first << dendl;
     ceph_assert(i->first > new_last_backfill);
