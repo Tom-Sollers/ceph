@@ -14126,6 +14126,21 @@ uint64_t PrimaryLogPG::recover_replicas(uint64_t max, ThreadPool::TPHandle &hand
 	continue;
       }
 
+      if (soid.is_snap() && m.is_missing(soid.get_head())) {
+        hobject_t head = soid.get_head();
+        if (!recovering.count(head)) {
+          dout(10) << __func__ << ": " << soid << " neads head " << head
+                   << " on replica first, preemptively recovering head" << dendl;
+          auto head_r = m.get_items().find(head);
+          ceph_assert(head_r != m.get_items().end());
+          started += prep_object_replica_pushes(head, head_r->second.need, h, work_started);
+        } else {
+          dout(10) << __func__ << ": " << soid << " waiting for head " << head
+                   << " to finish recovering on replica" << dendl;
+        }
+        continue;
+      }
+
       if (recovery_state.get_pg_log().get_missing().is_missing(soid)) {
 	dout(10) << __func__ << ": " << soid << " still missing on primary" << dendl;
 	continue;

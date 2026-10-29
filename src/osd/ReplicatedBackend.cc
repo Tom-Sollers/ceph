@@ -1532,6 +1532,7 @@ void ReplicatedBackend::calc_clone_subsets(
   interval_set<uint64_t> next;
   if (size)
     next.insert(0, size);
+  bool found_next = false;
   for (unsigned j=i+1; j<snapset.clones.size(); j++) {
     hobject_t c = soid;
     c.snap = snapset.clones[j];
@@ -1543,10 +1544,29 @@ void ReplicatedBackend::calc_clone_subsets(
 	       << " overlap " << next << dendl;
       clone_subsets[c] = next;
       cloning.union_of(next);
+      found_next = true;
       break;
     }
     dout(10) << "calc_clone_subsets " << soid << " does not have next " << c
 	     << " overlap " << next << dendl;
+  }
+
+  // check overlap with head object.
+  if (!found_next && snapset.clones.size() > 0) {
+    hobject_t head = soid.get_head();
+    next.intersection_of(snapset.clone_overlap[snapset.clones.back()]);
+    
+    if (!missing.is_missing(head) &&
+        head < last_backfill &&
+        get_parent()->try_lock_for_read(head, manager)) {
+      dout(10) << "calc_clone_subsets " << soid << " has next " << head
+               << " overlap " << next << dendl;
+      clone_subsets[head] = next;
+      cloning.union_of(next);
+    } else {
+      dout(10) << "calc_clone_subsets " << soid << " does not have next " << head
+               << " overlap " << next << dendl;
+    }
   }
 
   if (cloning.num_intervals() > g_conf().get_val<uint64_t>("osd_recover_clone_overlap_limit")) {
