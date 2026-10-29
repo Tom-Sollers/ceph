@@ -1442,7 +1442,6 @@ void ReplicatedBackend::calc_head_subsets(
     c.snap = snapset.clones[j];
     prev.intersection_of(snapset.clone_overlap[snapset.clones[j]]);
     if (!missing.is_missing(c) &&
-	c < last_backfill &&
 	get_parent()->try_lock_for_read(c, manager)) {
       dout(10) << "calc_head_subsets " << head << " has prev " << c
 	       << " overlap " << prev << dendl;
@@ -1516,7 +1515,6 @@ void ReplicatedBackend::calc_clone_subsets(
     c.snap = snapset.clones[j];
     prev.intersection_of(snapset.clone_overlap[snapset.clones[j]]);
     if (!missing.is_missing(c) &&
-	c < last_backfill &&
 	get_parent()->try_lock_for_read(c, manager)) {
       dout(10) << "calc_clone_subsets " << soid << " has prev " << c
 	       << " overlap " << prev << dendl;
